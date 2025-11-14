@@ -4,6 +4,7 @@ Player = {}
 Player.netId = 0
 Player.name = ""
 Player.order = 1
+Player.seatIndex = nil
 Player.cardA = nil
 Player.cardB = nil
 Player.isNpc = false
@@ -18,6 +19,7 @@ Player.amountBetInRound = 0
 Player.totalAmountBetInGame = 0
 
 Player.hasFolded = false
+Player.isAllIn = false
 
 
 function Player:getNetId()
@@ -40,8 +42,16 @@ function Player:getOrder()
 	return self.order
 end
 
+function Player:getSeatIndex()
+	return self.seatIndex
+end
+
 function Player:setOrder(order)
 	self.order = order
+end
+
+function Player:setSeatIndex(seatIndex)
+	self.seatIndex = seatIndex
 end
 
 function Player:getCardA()
@@ -132,6 +142,14 @@ function Player:setHasFolded(hasFolded)
 	self.hasFolded = hasFolded
 end
 
+function Player:getIsAllIn()
+	return self.isAllIn
+end
+
+function Player:setIsAllIn(isAllIn)
+	self.isAllIn = isAllIn
+end
+
 
 --------
 
@@ -163,6 +181,8 @@ function Player:New(obj)
 	instance.cardB = obj.cardB
 	instance.name = obj.name
 	instance.order = obj.order
+	instance.seatIndex = obj.seatIndex
 	instance.totalAmountBetInGame = obj.totalAmountBetInGame
+	instance.isAllIn = false
     return instance
 end

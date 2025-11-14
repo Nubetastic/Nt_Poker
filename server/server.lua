@@ -1,17 +1,56 @@
-VORPcore = {}
-TriggerEvent("getCore", function(core)
-    VORPcore = core
-end)
-VORPutils = {}
-TriggerEvent("getUtils", function(utils)
-    VORPutils = utils
-	print = VORPutils.Print:initialize(print)
-end)
+local RSGCore = exports['rsg-core']:GetCoreObject()
 
 local locations = {}
 
 local pendingGames = {}
 local activeGames = {}
+
+local function sortAndAssignOrders(players, startingSeat)
+    table.sort(players, function(a,b)
+        local sa = a.seatIndex or a:getSeatIndex() or 999
+        local sb = b.seatIndex or b:getSeatIndex() or 999
+        if sa == sb then return (a:getNetId() or 0) < (b:getNetId() or 0) end
+        return sa < sb
+    end)
+    local startIdx = 1
+    for i,p in ipairs(players) do
+        if (p.seatIndex or p:getSeatIndex()) == startingSeat then
+            startIdx = i
+            break
+        end
+    end
+    for i=1, startIdx-1 do
+        local x = table.remove(players, 1)
+        table.insert(players, x)
+    end
+    for i,p in ipairs(players) do
+        p:setOrder(i)
+    end
+end
+
+local function nextStartingSeat(currentSeat, maxSeats, players)
+    if not currentSeat then return nil end
+    local occupied = {}
+    for _,p in ipairs(players) do
+        if p.seatIndex or p:getSeatIndex() then
+            occupied[p.seatIndex or p:getSeatIndex()] = true
+        end
+    end
+    if not maxSeats or maxSeats < 1 then maxSeats = 6 end
+    local tries = 0
+    local s = currentSeat
+    while tries < maxSeats do
+        s = s + 1
+        if s > maxSeats then s = 1 end
+        if occupied[s] then return s end
+        tries = tries + 1
+    end
+    return currentSeat
+end
+
+
+
+
 
 
 
@@ -25,6 +64,7 @@ Citizen.CreateThread(function()
             tableCoords = v.Table.Coords,
             maxPlayers = v.MaxPlayers,
         })
+        location.waitingPlayers = {}
         table.insert(locations, location)
     end
 end)
@@ -41,8 +81,9 @@ end)
 RegisterServerEvent("rainbow_poker:Server:RequestCharacterName", function()
 	local _source = source
 
-    local Character = VORPcore.getUser(_source).getUsedCharacter
-    TriggerClientEvent("rainbow_poker:Client:ReturnRequestCharacterName", _source, Character.firstname)
+    local Player = RSGCore.Functions.GetPlayer(_source)
+    local firstname = (Player and Player.PlayerData and Player.PlayerData.charinfo and Player.PlayerData.charinfo.firstname) or GetPlayerName(_source)
+    TriggerClientEvent("rainbow_poker:Client:ReturnRequestCharacterName", _source, firstname)
 end)
 
 
@@ -61,35 +102,46 @@ RegisterServerEvent("rainbow_poker:Server:StartNewPendingGame", function(player1
 
     if Config.DebugPrint then print("StartNewPendingGame", player1sChosenName, anteAmount, tableLocationIndex) end
 
+    -- Validate location index and state
+    local loc = locations[tableLocationIndex]
+    if not loc then
+        if Config.DebugPrint then print("StartNewPendingGame: invalid location index", tableLocationIndex) end
+        return
+    end
     -- Make sure this location is still in state EMPTY (i.e. no one else has started a game at the same time)
-    if locations[tableLocationIndex]:getState() ~= LOCATION_STATES.EMPTY then
+    if loc:getState() ~= LOCATION_STATES.EMPTY then
         return
     end
 
     -- Make sure this player isn't already in a pending poker game
     if findPendingGameByPlayerNetId(_source) ~= false then
-        VORPcore.NotifyRightTip(_source, "You are still in a pending poker game.", 20 * 1000)
+        TriggerClientEvent('poker:notify', _source, { description = 'You are still in a pending poker game.', type = 'error', duration = 6000 })
         return
     end
 
     -- Make sure this player isn't already in an active poker game
     if findActiveGameByPlayerNetId(_source) ~= false then
-        VORPcore.NotifyRightTip(_source, "You are still in an active poker game.", 20 * 1000)
+        TriggerClientEvent('poker:notify', _source, { description = 'You are still in an active poker game.', type = 'error', duration = 6000 })
         return
     end
 
     player1sChosenName = truncateString(player1sChosenName, 10)
 
+    if not hasMoney(_source, anteAmount) then
+        TriggerClientEvent('poker:notify', _source, { description = "You don't have enough for the ante.", type = 'error', duration = 6000 })
+        return
+    end
+
     math.randomseed(os.time())
 
     local player1NetId = _source
 
-    -- Create the PendingPlayer object
     local pendingPlayer1 = Player:New({
         netId = player1NetId,
         name = player1sChosenName,
         order = 1,
     })
+    pendingPlayer1.seatIndex = math.random(1, loc:getMaxPlayers())
     
     -- Create the PendingGame
     local newPendingGame = PendingGame:New({
@@ -106,11 +158,11 @@ RegisterServerEvent("rainbow_poker:Server:StartNewPendingGame", function(player1
     if Config.DebugPrint then print("StartNewGame - newPendingGame", newPendingGame) end
 
     -- Make the player sit at the chair of their order
-    TriggerClientEvent("rainbow_poker:Client:ReturnStartNewPendingGame", _source, tableLocationIndex, pendingPlayer1)
+    TriggerClientEvent("rainbow_poker:Client:ReturnStartNewPendingGame", _source, tableLocationIndex, pendingPlayer1, pendingPlayer1.seatIndex)
 
     TriggerClientEvent("rainbow_poker:Client:UpdatePokerTables", -1, locations)
 
-    logPendingGameToDiscord(tableLocationIndex, newPendingGame, pendingPlayer1)
+    -- Discord logging removed
 end)
 
 RegisterServerEvent("rainbow_poker:Server:JoinGame", function(playersChosenName, tableLocationIndex)
@@ -118,24 +170,74 @@ RegisterServerEvent("rainbow_poker:Server:JoinGame", function(playersChosenName,
 
     if Config.DebugPrint then print("JoinGame", playersChosenName, tableLocationIndex) end
 
-    local pendingGame = locations[tableLocationIndex]:getPendingGame()
+    local loc = locations[tableLocationIndex]
+    if not loc then
+        if Config.DebugPrint then print("JoinGame: invalid location index", tableLocationIndex) end
+        return
+    end
+    local pendingGame = loc:getPendingGame()
+    if not pendingGame then
+        if loc:getState() == LOCATION_STATES.GAME_IN_PROGRESS then
+            local game = activeGames[tableLocationIndex]
+            if not game then return end
+            if loc.waitingPlayers then
+                for _,wp in ipairs(loc.waitingPlayers) do
+                    if wp.netId == _source then
+                        TriggerClientEvent('poker:notify', _source, { description = 'You are already waiting for the next hand.', type = 'inform', duration = 6000 })
+                        return
+                    end
+                end
+            else
+                loc.waitingPlayers = {}
+            end
+            local taken = {}
+            for _,p in pairs(game:getPlayers()) do
+                local s = p.seatIndex or p:getOrder()
+                taken[s] = true
+            end
+            for _,wp in ipairs(loc.waitingPlayers) do
+                taken[wp.seatIndex] = true
+            end
+            local available = {}
+            for i=1, loc:getMaxPlayers() do
+                if not taken[i] then table.insert(available, i) end
+            end
+            if #available == 0 then
+                TriggerClientEvent('poker:notify', _source, { description = 'No seats available.', type = 'error', duration = 6000 })
+                return
+            end
+            if not hasMoney(_source, game:getAnte()) then
+                TriggerClientEvent('poker:notify', _source, { description = "You don't have enough for the ante.", type = 'error', duration = 6000 })
+                return
+            end
+            local seatIndex = available[math.random(1, #available)]
+            table.insert(loc.waitingPlayers, { netId = _source, name = truncateString(playersChosenName, 12), seatIndex = seatIndex })
+            TriggerClientEvent("rainbow_poker:Client:ReturnJoinGame", _source, tableLocationIndex, { order = seatIndex }, seatIndex)
+            TriggerClientEvent('poker:notify', _source, { description = 'You will join next hand.', type = 'inform', duration = 6000 })
+            TriggerClientEvent("rainbow_poker:Client:UpdatePokerTables", -1, locations)
+            return
+        else
+            if Config.DebugPrint then print("JoinGame: no pending game at location", tableLocationIndex) end
+            return
+        end
+    end
 
 
     -- Check if the game is already maxed out
-    if #pendingGame:getPlayers() >= locations[tableLocationIndex]:getMaxPlayers() then
-        VORPcore.NotifyRightTip(_source, "This poker game is full.", 20 * 1000)
+    if #pendingGame:getPlayers() >= loc:getMaxPlayers() then
+        TriggerClientEvent('poker:notify', _source, { description = 'This poker game is full.', type = 'error', duration = 6000 })
         return
     end
 
     -- Make sure this player isn't already in a pending poker game
     if findPendingGameByPlayerNetId(_source) ~= false then
-        VORPcore.NotifyRightTip(_source, "You are still in a pending poker game.", 20 * 1000)
+        TriggerClientEvent('poker:notify', _source, { description = 'You are still in a pending poker game.', type = 'error', duration = 6000 })
         return
     end
 
     -- Make sure this player isn't already in an active poker game
     if findActiveGameByPlayerNetId(_source) ~= false then
-        VORPcore.NotifyRightTip(_source, "You are still in an active poker game.", 20 * 1000)
+        TriggerClientEvent('poker:notify', _source, { description = 'You are still in an active poker game.', type = 'error', duration = 6000 })
         return
     end
 
@@ -144,46 +246,72 @@ RegisterServerEvent("rainbow_poker:Server:JoinGame", function(playersChosenName,
 
     local playerNetId = _source
 
-    -- Create the PendingPlayer object
+    local taken = {}
+    for k,v in pairs(pendingGame:getPlayers()) do
+        if v.seatIndex then
+            taken[v.seatIndex] = true
+        end
+    end
+    local available = {}
+    for i=1, loc:getMaxPlayers() do
+        if not taken[i] then
+            table.insert(available, i)
+        end
+    end
+    if not hasMoney(_source, pendingGame:getAnte()) then
+        TriggerClientEvent('poker:notify', _source, { description = "You don't have enough for the ante.", type = 'error', duration = 6000 })
+        return
+    end
+    local seatIndex = available[math.random(1, #available)]
     local pendingPlayer = Player:New({
         netId = playerNetId,
         name = playersChosenName,
         order = #pendingGame:getPlayers()+1,
     })
+    pendingPlayer.seatIndex = seatIndex
 
     -- Add player & init their hole cards
     pendingGame:addPlayer(pendingPlayer)
 
     -- Make the player sit at the chair of their order
-    TriggerClientEvent("rainbow_poker:Client:ReturnJoinGame", _source, tableLocationIndex, pendingPlayer)
+    TriggerClientEvent("rainbow_poker:Client:ReturnJoinGame", _source, tableLocationIndex, pendingPlayer, pendingPlayer.seatIndex)
 
     TriggerClientEvent("rainbow_poker:Client:UpdatePokerTables", -1, locations)
 
-    logJoinToDiscord(tableLocationIndex, pendingGame, pendingPlayer)
+    -- Discord logging removed
 end)
+
 
 RegisterServerEvent("rainbow_poker:Server:FinalizePendingGameAndBegin", function(tableLocationIndex)
 	local _source = source
 
     if Config.DebugPrint then print("FinalizePendingGameAndBegin", tableLocationIndex) end
 
-    local pendingGame = locations[tableLocationIndex]:getPendingGame()
+    local loc = locations[tableLocationIndex]
+    if not loc then
+        if Config.DebugPrint then print("FinalizePendingGameAndBegin: invalid location index", tableLocationIndex) end
+        return
+    end
+    local pendingGame = loc:getPendingGame()
+    if not pendingGame then
+        if Config.DebugPrint then print("FinalizePendingGameAndBegin: no pending game at location", tableLocationIndex) end
+        return
+    end
 
     -- Check there's 1+ players, and not >12
     if #pendingGame:getPlayers() < 2 then
-        VORPcore.NotifyRightTip(_source, "You need at least 1 other player to join your poker game.", 6 * 1000)
+        TriggerClientEvent('poker:notify', _source, { description = 'You need at least 1 other player to join your poker game.', type = 'error', duration = 6000 })
         return
     elseif #pendingGame:getPlayers() > 12 then
-        VORPcore.NotifyRightTip(_source, "You cannot have more than 12 players in your poker game.", 6 * 1000)
+        TriggerClientEvent('poker:notify', _source, { description = 'You cannot have more than 12 players in your poker game.', type = 'error', duration = 6000 })
         return
     end
 
     -- Make sure all the pending players have enough money
     for k,v in pairs(pendingGame:getPlayers()) do
         if not hasMoney(v:getNetId(), pendingGame:getAnte()) then
-            -- Cancel the game
             TriggerEvent("rainbow_poker:Server:CancelPendingGame", tableLocationIndex)
-            VORPcore.NotifyRightTip(v:getNetId(), "You don't have the ante money.", 6 * 1000)
+            TriggerClientEvent('poker:notify', v:getNetId(), { description = "You don't have the ante money.", type = 'error', duration = 6000 })
             return
         end
     end
@@ -191,21 +319,33 @@ RegisterServerEvent("rainbow_poker:Server:FinalizePendingGameAndBegin", function
     -- Add players to active game
     local activeGamePlayers = {}
     for k,v in pairs(pendingGame:getPlayers()) do
-
-        -- Take the antes from pocket money
         if takeMoney(v:getNetId(), pendingGame:getAnte()) then
-            
             table.insert(activeGamePlayers, Player:New({
                 netId = v:getNetId(),
                 name = v:getName(),
                 order = v:getOrder(),
+                seatIndex = v.seatIndex,
                 totalAmountBetInGame = pendingGame:getAnte(),
             }))
         else
-            -- Cancel the game
             TriggerEvent("rainbow_poker:Server:CancelPendingGame", tableLocationIndex)
             return
         end
+    end
+
+    local hostNetId = pendingGame:getInitiatorNetId()
+    local hostSeat = nil
+    for _,p in pairs(pendingGame:getPlayers()) do
+        if p:getNetId() == hostNetId then
+            hostSeat = p.seatIndex or p:getSeatIndex()
+            break
+        end
+    end
+    if not hostSeat and #activeGamePlayers > 0 then
+        hostSeat = activeGamePlayers[1].seatIndex or activeGamePlayers[1]:getSeatIndex()
+    end
+    if hostSeat then
+        sortAndAssignOrders(activeGamePlayers, hostSeat)
     end
 
     local newActiveGame = Game:New({
@@ -215,7 +355,6 @@ RegisterServerEvent("rainbow_poker:Server:FinalizePendingGameAndBegin", function
         bettingPool = pendingGame:getAnte() * #pendingGame:getPlayers(),
     })
 
-    -- Init the game
     newActiveGame:init()
     newActiveGame:moveToNextRound()
 
@@ -228,7 +367,14 @@ RegisterServerEvent("rainbow_poker:Server:FinalizePendingGameAndBegin", function
 
     -- To all of the game's players
     for k,player in pairs(newActiveGame:getPlayers()) do
-        TriggerClientEvent("rainbow_poker:Client:StartGame", player:getNetId(), newActiveGame, player:getOrder())
+        local seatIndexToSend = player:getOrder()
+        for _,p in pairs(pendingGame:getPlayers()) do
+            if p:getNetId() == player:getNetId() and p.seatIndex then
+                seatIndexToSend = p.seatIndex
+                break
+            end
+        end
+        TriggerClientEvent("rainbow_poker:Client:StartGame", player:getNetId(), newActiveGame, player.seatIndex or seatIndexToSend)
     end
 
     Wait(1000)
@@ -241,9 +387,20 @@ RegisterServerEvent("rainbow_poker:Server:CancelPendingGame", function(tableLoca
 
     if Config.DebugPrint then print("CancelPendingGame", tableLocationIndex) end
 
-    for k,v in pairs(locations[tableLocationIndex]:getPendingGame():getPlayers()) do
+    local loc = locations[tableLocationIndex]
+    if not loc then
+        if Config.DebugPrint then print("CancelPendingGame: invalid location index", tableLocationIndex) end
+        return
+    end
+
+    if not loc:getPendingGame() then
+        if Config.DebugPrint then print("CancelPendingGame: no pending game at location", tableLocationIndex) end
+        return
+    end
+
+    for k,v in pairs(loc:getPendingGame():getPlayers()) do
         TriggerClientEvent("rainbow_poker:Client:CancelPendingGame", v:getNetId(), tableLocationIndex)
-        VORPcore.NotifyRightTip(v:getNetId(), "The pending poker game has been canceled.", 6 * 1000)
+        TriggerClientEvent('poker:notify', v:getNetId(), { description = 'The pending poker game has been canceled.', type = 'inform', duration = 6000 })
     end
 
     locations[tableLocationIndex]:setPendingGame(nil)
@@ -251,7 +408,7 @@ RegisterServerEvent("rainbow_poker:Server:CancelPendingGame", function(tableLoca
 
     TriggerClientEvent("rainbow_poker:Client:UpdatePokerTables", -1, locations)
 
-    logPendingGameCancelToDiscord(tableLocationIndex, _source)
+    -- Discord logging removed
 
 end)
 
@@ -280,17 +437,28 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionRaise", function(amountToR
     if Config.DebugPrint then print("rainbow_poker:Server:PlayerActionRaise - _source, amountToRaise:", _source, amountToRaise) end
 
     local game = findActiveGameByPlayerNetId(_source)
-
-    game:stopTurnTimer()
-
-    if not takeMoney(_source, amountToRaise) then
-        -- They didn't have the money to bet; force a fold
-        VORPcore.NotifyRightTip(_source, "You are forced to fold.", 20 * 1000)
-        fold(_source)
+    local player = game and game:findPlayerByNetId(_source) or nil
+    if not game or not player or game:getCurrentTurn() ~= player:getOrder() or player:getIsAllIn() then
         return
     end
 
-    game:onPlayerDidActionRaise(_source, amountToRaise)
+    game:stopTurnTimer()
+
+    amountToRaise = tonumber(amountToRaise)
+    if takeMoney(_source, amountToRaise) then
+        game:onPlayerDidActionRaise(_source, amountToRaise)
+    else
+        local cash = getCash(_source)
+        if cash <= 0 then
+            fold(_source)
+            return
+        end
+        local potBefore = game:getBettingPool()
+        local PlayerObj = RSGCore.Functions.GetPlayer(_source)
+        if PlayerObj then PlayerObj.Functions.RemoveMoney('cash', cash, 'poker-allin') end
+        game:addSidePot(potBefore)
+        game:onPlayerDidActionAllIn(_source, cash)
+    end
 
     if not game:advanceTurn() then
         checkForWinCondition(game)
@@ -306,19 +474,35 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionCall", function()
 
     local game = findActiveGameByPlayerNetId(_source)
 
+    if not game then return end
+    local player = game:findPlayerByNetId(_source)
+    if not player or game:getCurrentTurn() ~= player:getOrder() then
+        TriggerClientEvent('poker:notify', _source, { description = 'Not your turn.', type = 'error', duration = 4000 })
+        return
+    end
+    if player:getIsAllIn() then
+        return
+    end
+
     game:stopTurnTimer()
 
     local player = game:findPlayerByNetId(_source)
     local amount = game:getRoundsHighestBet() - player:getAmountBetInRound()
 
-    if not takeMoney(_source, amount) then
-        -- They didn't have the money to bet; force a fold
-        VORPcore.NotifyRightTip(_source, "You are forced to fold.", 20 * 1000)
-        fold(_source)
-        return
+    if takeMoney(_source, amount) then
+        game:onPlayerDidActionCall(_source)
+    else
+        local cash = getCash(_source)
+        if cash <= 0 then
+            fold(_source)
+            return
+        end
+        local potBefore = game:getBettingPool()
+        local PlayerObj = RSGCore.Functions.GetPlayer(_source)
+        if PlayerObj then PlayerObj.Functions.RemoveMoney('cash', cash, 'poker-allin') end
+        game:addSidePot(potBefore)
+        game:onPlayerDidActionAllIn(_source, cash)
     end
-
-    game:onPlayerDidActionCall(_source)
 
     if not game:advanceTurn() then
         checkForWinCondition(game)
@@ -349,8 +533,11 @@ RegisterServerEvent("rainbow_poker:Server:PlayerLeave", function()
         return
     end
 
-    -- Close out of the game on the client side (it's just visual)
     TriggerClientEvent("rainbow_poker:Client:ReturnPlayerLeave", _source)
+
+    if game and player then
+        player.hasLeftSession = true
+    end
 
 end)
 
@@ -391,13 +578,25 @@ function checkForWinCondition(game)
 
         -- Give the pot money
         if not winScenario:getIsTrueTie() then
-            -- Not a tie
-            giveMoney(winScenario:getWinningHand():getPlayerNetId(), game:getBettingPool())
+            local winnerNetId
+            if winScenario:getWinningHand() then
+                winnerNetId = winScenario:getWinningHand():getPlayerNetId()
+            else
+                for k,player in pairs(game:getPlayers()) do
+                    if not player:getHasFolded() then
+                        winnerNetId = player:getNetId()
+                        break
+                    end
+                end
+            end
+            if winnerNetId then
+                giveMoney(winnerNetId, game:getBettingPool())
+            end
         else
-            -- Tie
             local splitAmount = game:getBettingPool() / #winScenario:getTiedHands()
             for k,tiedHand in pairs(winScenario:getTiedHands()) do
-                giveMoney(tiedHand:getPlayerNetId(), splitAmount)
+                local pid = tiedHand:getPlayerNetId()
+                giveMoney(pid, splitAmount)
             end
         end
 
@@ -406,13 +605,103 @@ function checkForWinCondition(game)
             TriggerClientEvent("rainbow_poker:Client:AlertWin", player:getNetId(), winScenario)
         end
 
-        -- Send the cleanup signals after 30 seconds
-        Citizen.SetTimeout(30 * 1000, function()
-            endAndCleanupGame(game)
+        for k,player in pairs(game:getPlayers()) do
+            TriggerClientEvent('poker:notify', player:getNetId(), { description = 'Next hand in 10 seconds. Press DOWN to leave.', type = 'inform', duration = 10000 })
+        end
+
+        Citizen.SetTimeout(10 * 1000, function()
+            local continuingPlayers = {}
+            for k,player in pairs(game:getPlayers()) do
+                if not player.hasLeftSession then
+                    table.insert(continuingPlayers, player)
+                end
+            end
+
+            if #continuingPlayers < 2 then
+                endAndCleanupGame(game)
+                return
+            end
+
+            local activeGamePlayers = {}
+            for k,player in ipairs(continuingPlayers) do
+                if takeMoney(player:getNetId(), game:getAnte()) then
+                    table.insert(activeGamePlayers, Player:New({
+                        netId = player:getNetId(),
+                        name = player:getName(),
+                        order = #activeGamePlayers + 1,
+                        seatIndex = player.seatIndex,
+                        totalAmountBetInGame = game:getAnte(),
+                    }))
+                else
+                    TriggerClientEvent('poker:notify', player:getNetId(), { description = 'Insufficient funds for ante. Leaving table.', type = 'error', duration = 10000 })
+                end
+            end
+
+            local locationIndex = game:getLocationIndex()
+            local ante = game:getAnte()
+            local loc = locations[locationIndex]
+            local hasWaiting = (loc and loc.waitingPlayers and #loc.waitingPlayers > 0)
+
+            if hasWaiting then
+                endAndCleanupGame(game)
+            end
+
+            if loc and loc.waitingPlayers then
+                for _,wp in ipairs(loc.waitingPlayers) do
+                    if takeMoney(wp.netId, ante) then
+                        table.insert(activeGamePlayers, Player:New({
+                            netId = wp.netId,
+                            name = wp.name,
+                            order = #activeGamePlayers + 1,
+                            seatIndex = wp.seatIndex,
+                            totalAmountBetInGame = ante,
+                        }))
+                    else
+                        TriggerClientEvent('poker:notify', wp.netId, { description = 'Insufficient funds for ante. Leaving queue.', type = 'error', duration = 10000 })
+                    end
+                end
+                loc.waitingPlayers = {}
+            end
+
+            if #activeGamePlayers < 2 then
+                if not hasWaiting then
+                    endAndCleanupGame(game)
+                end
+                return
+            end
+
+            local prevFirst = game:findPlayerByOrder(1)
+            local prevSeat = nil
+            if prevFirst then prevSeat = prevFirst.seatIndex or prevFirst:getSeatIndex() end
+            local maxSeats = 6
+            if loc and loc.getMaxPlayers then maxSeats = loc:getMaxPlayers() end
+            local startSeat = prevSeat and nextStartingSeat(prevSeat, maxSeats, activeGamePlayers) or ((activeGamePlayers[1] and (activeGamePlayers[1].seatIndex or activeGamePlayers[1]:getSeatIndex())) or 1)
+            sortAndAssignOrders(activeGamePlayers, startSeat)
+
+            local newActiveGame = Game:New({
+                locationIndex = locationIndex,
+                players = activeGamePlayers,
+                ante = ante,
+                bettingPool = ante * #activeGamePlayers,
+            })
+
+            newActiveGame:init()
+            newActiveGame:moveToNextRound()
+
+            activeGames[locationIndex] = newActiveGame
+
+            if hasWaiting and locations[locationIndex] then
+                locations[locationIndex]:setState(LOCATION_STATES.GAME_IN_PROGRESS)
+            end
+
+            for k,player in pairs(newActiveGame:getPlayers()) do
+                TriggerClientEvent("rainbow_poker:Client:StartGame", player:getNetId(), newActiveGame, player.seatIndex or player:getOrder())
+            end
+
+            TriggerClientEvent("rainbow_poker:Client:UpdatePokerTables", -1, locations)
         end)
 
-        -- Log to Discord
-        logFinishedGameToDiscord(game, winScenario)
+        
 
     else
         -- No win condition yet; move on to next round
@@ -473,48 +762,39 @@ function fold(targetNetId)
     end
 end
 
+function getCash(targetNetId)
+    local Player = RSGCore.Functions.GetPlayer(targetNetId)
+    if not Player then return 0 end
+    local cash = Player.Functions.GetMoney('cash') or 0
+    return cash
+end
+
 function hasMoney(targetNetId, amount)
-    local Character = VORPcore.getUser(targetNetId).getUsedCharacter
-    local money = Character.money
-
     amount = tonumber(amount)
-
-    -- Check that they have the schmoney
-    if tonumber(money) < tonumber(amount) then
-        return false
-    end
-
-    return true
+    local cash = getCash(targetNetId)
+    return cash >= amount
 end
 
 function takeMoney(targetNetId, amount)
-    local Character = VORPcore.getUser(targetNetId).getUsedCharacter
-    local money = Character.money
-
     amount = tonumber(amount)
-
-    -- Check that they have the schmoney
-    if money < amount then
-        VORPcore.NotifyRightTip(targetNetId, string.format("You don't have $%.2f!", amount), 20 * 1000)
+    local Player = RSGCore.Functions.GetPlayer(targetNetId)
+    if not Player then return false end
+    local cash = Player.Functions.GetMoney('cash') or 0
+    if cash < amount then
+        TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You don't have $%.2f!", amount), type = 'error', duration = 20000 })
         return false
     end
-
-    Character.removeCurrency(0, amount)
-
-    VORPcore.NotifyRightTip(targetNetId, string.format("You have bet $%.2f.", amount), 6 * 1000)
-
+    Player.Functions.RemoveMoney('cash', amount, 'poker-ante')
+    TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You have bet $%.2f.", amount), type = 'inform', duration = 6000 })
     return true
 end
 
 function giveMoney(targetNetId, amount)
-
     amount = tonumber(amount)
-
-    local Character = VORPcore.getUser(targetNetId).getUsedCharacter
-    Character.addCurrency(0, amount)
-
-    VORPcore.NotifyRightTip(targetNetId, string.format("You have won $%.2f.", amount), 6 * 1000)
-
+    local Player = RSGCore.Functions.GetPlayer(targetNetId)
+    if not Player then return false end
+    Player.Functions.AddMoney('cash', amount, 'poker-win')
+    TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You have won $%.2f.", amount), type = 'success', duration = 6000 })
     return true
 end
 
@@ -540,118 +820,9 @@ function TriggerUpdate(game)
 end
 
 
--------- DISCORD --------
+--------
 
-function logFinishedGameToDiscord(game, winScenario)
-
-    local str = ""
-
-    local locationName = locations[game:getLocationIndex()]:getId()
-
-    str = str .. string.format("**Location:** %s\n", locationName)
-    str = str .. string.format("**Board Cards:** `%s`\n", game:getBoard():getString())
-    str = str .. string.format("**Ante:** %s\n", game:getAnte())
-    str = str .. string.format("**Final Betting Pool:** $%s\n", game:getBettingPool())
-
-    str = str .. "--------\n"
-
-    for k,player in pairs(game:getPlayers()) do
-
-        local Character = VORPcore.getUser(player:getNetId()).getUsedCharacter
-        local CharIdentifier = Character.charIdentifier
-        local fullName = string.format("%s %s", Character.firstname, Character.lastname)
-
-        str = str .. "🧑 __PLAYER__:\n"
-        str = str .. string.format("**Name:** %s *(CharId: %s; NetId: %d)*\n", fullName, CharIdentifier, player:getNetId())
-        str = str .. string.format("**Poker Nickname:** %s\n", player:getName())
-        str = str .. string.format("**Game Seat Order:** %s\n", player:getOrder())
-        str = str .. string.format("**Hole Cards:** `%s%s`\n", player:getCardA():getString(), player:getCardB():getString())
-        str = str .. string.format("**Total Amount Bet in Game:** $%d\n", player:getTotalAmountBetInGame())
-
-        str = str .. "--------\n"
-    end
-
-    if winScenario then
-        str = str .. "--------\n"
-        str = str .. "--------\n"
-
-        if winScenario:getIsTrueTie() then
-            -- TIE
-            local tiedHands = winScenario:getTiedHands()
-            for k,tiedHand in pairs(tiedHands) do
-                str = str .. string.format("**🎉🧑‍🤝‍🧑 Tied Hand %d:**\n", k)
-                str = str .. string.format("Cards: `%s`\n", tiedHand:getString())
-                str = str .. string.format("Hand Type: %s\n", tiedHand:getWinningHandType())
-                str = str .. string.format("Player NetId: %s\n", tiedHand:getPlayerNetId())
-            end
-        else
-            -- NON-TIE
-            local winningHand = winScenario:getWinningHand()
-            str = str .. "**🎉 Sole Winning Hand:**\n"
-            str = str .. string.format("Cards: `%s`\n", winningHand:getString())
-            str = str .. string.format("Hand Type: %s\n", winningHand:getWinningHandType())
-            str = str .. string.format("Player NetId: %s\n", winningHand:getPlayerNetId())
-        end
-
-        str = str .. "--------\n"
-    end
-
-
-    VORPcore.AddWebhook("♦️ Poker - Finished", Config.Webhook, str)
-
-end
-
-function logPendingGameToDiscord(tableLocationIndex, newPendingGame, pendingPlayer1)
-
-    local Character = VORPcore.getUser(pendingPlayer1:getNetId()).getUsedCharacter
-    local CharIdentifier = Character.charIdentifier
-    local fullName = string.format("%s %s", Character.firstname, Character.lastname)
-
-    local str = ""
-
-    local locationName = locations[tableLocationIndex]:getId()
-
-    str = str .. string.format("**Location:** %s\n", locationName)
-    str = str .. string.format("**Ante:** $%s\n", newPendingGame:getAnte())
-    str = str .. string.format("**Initiator:** %s *(CharId: %s; NetId: %d)*\n", fullName, CharIdentifier, pendingPlayer1:getNetId())
-
-    VORPcore.AddWebhook("♥️ Poker - New Pending Game Started", Config.Webhook, str)
-
-end
-
-function logJoinToDiscord(tableLocationIndex, pendingGame, pendingPlayer)
-
-    local Character = VORPcore.getUser(pendingPlayer:getNetId()).getUsedCharacter
-    local CharIdentifier = Character.charIdentifier
-    local fullName = string.format("%s %s", Character.firstname, Character.lastname)
-
-    local str = ""
-
-    local locationName = locations[tableLocationIndex]:getId()
-
-    str = str .. string.format("**Location:** %s\n", locationName)
-    str = str .. string.format("**Player:** %s *(CharId: %s; NetId: %d)*\n", fullName, CharIdentifier, pendingPlayer:getNetId())
-
-    VORPcore.AddWebhook("♣️ Poker - Player Joined Pending Game", Config.Webhook, str)
-
-end
-
-function logPendingGameCancelToDiscord(tableLocationIndex, playerNetId)
-
-    local Character = VORPcore.getUser(playerNetId).getUsedCharacter
-    local CharIdentifier = Character.charIdentifier
-    local fullName = string.format("%s %s", Character.firstname, Character.lastname)
-
-    local str = ""
-
-    local locationName = locations[tableLocationIndex]:getId()
-
-    str = str .. string.format("**Location:** %s\n", locationName)
-    str = str .. string.format("**Canceling Player:** %s *(CharId: %s; NetId: %d)*\n", fullName, CharIdentifier, playerNetId)
-
-    VORPcore.AddWebhook("❌ Poker - Pending Game Canceled", Config.Webhook, str)
-
-end
+-- Discord webhooks removed
 
 
 

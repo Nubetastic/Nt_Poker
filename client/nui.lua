@@ -1,7 +1,16 @@
 UI = {}
 
+PokerPendingStartContext = PokerPendingStartContext or nil
 
-
+function UI:OpenBlindsModal(opts)
+    SendNUIMessage({
+        type = "openBlindsModal",
+        min = opts and opts.min or 1,
+        max = opts and opts.max or 1000,
+        defaultBlind = opts and opts.defaultBlind or 5,
+    })
+    SetNuiFocus(true, true)
+end
 
 function UI:StartGame(game)
 
@@ -53,9 +62,9 @@ function UI:AlertWinScenario(winScenario)
 
     -- Play audio for win or lose
     if winScenario["thisPlayersWinningHand"] then
-        TriggerEvent("rainbow_core:PlayAudioFile", Config.Audio.Win, Config.AudioVolume)
+        TriggerEvent('poker:playAudio', Config.Audio.Win)
     else
-        TriggerEvent("rainbow_core:PlayAudioFile", Config.Audio.Lose, Config.AudioVolume)
+        TriggerEvent('poker:playAudio', Config.Audio.Lose)
     end
 
     SendNUIMessage({
@@ -85,12 +94,31 @@ RegisterNUICallback("playCardFlip", function(args, cb)
 	-- if Config.DebugPrint then print("closeAll") end
     local rand = math.random(1,3)
     local audioName = Config.Audio["CardFlip"..rand]
-	TriggerEvent("rainbow_core:PlayAudioFile", audioName, Config.AudioVolume)
+	TriggerEvent('poker:playAudio', audioName)
 	cb("ok")
 end)
 
 RegisterNUICallback("closeAll", function(args, cb)
 	if Config.DebugPrint then print("closeAll") end
 	UI:CloseAll()
+	cb("ok")
+end)
+
+RegisterNUICallback("blindsSelected", function(args, cb)
+	local blind = args and args.blind or nil
+	if Config.DebugPrint then print("blindsSelected", blind) end
+	if blind and tonumber(blind) and tonumber(blind) >= 1 and PokerPendingStartContext then
+		SetNuiFocus(false, false)
+		TriggerServerEvent("rainbow_poker:Server:StartNewPendingGame", PokerPendingStartContext.name, tostring(math.floor(tonumber(blind))), PokerPendingStartContext.locationIndex)
+		PokerPendingStartContext = nil
+		cb("ok")
+	else
+		cb("fail")
+	end
+end)
+
+RegisterNUICallback("cancelBlinds", function(args, cb)
+	SetNuiFocus(false, false)
+	PokerPendingStartContext = nil
 	cb("ok")
 end)

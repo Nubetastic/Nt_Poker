@@ -30,6 +30,7 @@ Game.ante = 0
 Game.bettingPool = 0
 Game.currentGoingBet = 0
 Game.roundsHighestBet = 0
+Game.sidePots = {}
 
 Game.turnTimer = nil
 Game.turnTimerWarned = false
@@ -325,7 +326,7 @@ function Game:isEndOfRound()
 end
 
 function Game:isOustandingPlayer(player)
-    return player:getHasFolded() == false and (player:getAmountBetInRound() ~= self.roundsHighestBet)
+    return player:getHasFolded() == false and (not player:getIsAllIn()) and (player:getAmountBetInRound() ~= self.roundsHighestBet)
 end
 
 function Game:haveAnyPlayersNotBetTheHighestBet()
@@ -349,7 +350,7 @@ function Game:findLastNonFoldedPlayerOrder()
     local lastOrderPlayer = self:findPlayerByOrder(lastOrder)
     if lastOrderPlayer then
 
-        if self:findPlayerByOrder(lastOrder):getHasFolded() == false then
+        if self:findPlayerByOrder(lastOrder):getHasFolded() == false and (not self:findPlayerByOrder(lastOrder):getIsAllIn()) then
             return lastOrder
         end
 
@@ -365,7 +366,7 @@ function Game:findFirstNonFoldedPlayerOrder()
 
     local firstOrderPlayer = self:findPlayerByOrder(1)
     if firstOrderPlayer then
-        if firstOrderPlayer:getHasFolded() == false then
+        if firstOrderPlayer:getHasFolded() == false and (not firstOrderPlayer:getIsAllIn()) then
             return 1
         end
     end
@@ -410,7 +411,7 @@ function Game:findFollowingNonFoldedPlayerOrder(originalTurn)
         local playerOfTurnToCheck = self:findPlayerByOrder(turnToCheck)
 
         -- Make sure the player has not folded yet
-        if playerOfTurnToCheck and playerOfTurnToCheck:getHasFolded() == false then
+        if playerOfTurnToCheck and playerOfTurnToCheck:getHasFolded() == false and (not playerOfTurnToCheck:getIsAllIn()) then
             if Config.DebugPrint then print("Game:findFollowingNonFoldedPlayerOrder() - playerOfTurnToCheck", playerOfTurnToCheck) end
             hasFoundNonFoldedPlayer = true
             return playerOfTurnToCheck:getOrder()
@@ -450,7 +451,7 @@ function Game:findPrecedingNonFoldedPlayerOrder(originalTurn)
         local playerOfTurnToCheck = self:findPlayerByOrder(turnToCheck)
 
         -- Make sure the player has not folded yet
-        if playerOfTurnToCheck and playerOfTurnToCheck:getHasFolded() == false then
+        if playerOfTurnToCheck and playerOfTurnToCheck:getHasFolded() == false and (not playerOfTurnToCheck:getIsAllIn()) then
             if Config.DebugPrint then print("Game:findPrecedingNonFoldedPlayerOrder() - playerOfTurnToCheck", playerOfTurnToCheck) end
             hasFoundNonFoldedPlayer = true
             return playerOfTurnToCheck:getOrder()
@@ -566,6 +567,10 @@ function Game:stopTurnTimer()
     self.turnTimerWarned = false
 end
 
+function Game:addSidePot(amount)
+    table.insert(self.sidePots, amount)
+end
+
 --------
 
 function Game:onPlayerDidActionCheck(_source)
@@ -630,6 +635,25 @@ function Game:onPlayerDidActionRaise(_source, amountToRaise)
 
     if Config.DebugPrint then print(">597 Game:onPlayerDidActionRaise - player:getAmountBetInRound():", player:getAmountBetInRound()) end
     if Config.DebugPrint then print(">598 Game:onPlayerDidActionRaise - self.currentGoingBet:", self.currentGoingBet) end
+end
+
+function Game:onPlayerDidActionAllIn(_source, amount)
+    local player = self:findPlayerByNetId(_source)
+    local action = ACTIONS.CALL
+    if self.step == ROUNDS.INITIAL then
+        player:setActionInitial(action)
+    elseif self.step == ROUNDS.FLOP then
+        player:setActionFlop(action)
+    elseif self.step == ROUNDS.TURN then
+        player:setActionTurn(action)
+    elseif self.step == ROUNDS.RIVER then
+        player:setActionRiver(action)
+    end
+    player:setLastBetAmount(amount)
+    player:setAmountBetInRound(player:getAmountBetInRound() + amount)
+    player:setTotalAmountBetInGame(player:getTotalAmountBetInGame() + amount)
+    self.bettingPool = self.bettingPool + amount
+    player:setIsAllIn(true)
 end
 
 function Game:onPlayerDidActionCall(_source)
@@ -734,6 +758,7 @@ function Game:New(obj)
     instance.currentTurn = 1
     instance.currentGoingBet = 0
     instance.roundsHighestBet = 0
+    instance.sidePots = {}
     instance.turnTimer = nil
     instance.turnTimerWarned = false
     return instance

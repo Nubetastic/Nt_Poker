@@ -1,13 +1,103 @@
-VORPcore = {}
-TriggerEvent("getCore", function(core)
-    VORPcore = core
+-- Natives-only bootstrap (replacing VORP and rainbow-core on client)
+
+-- Simple notify bridge -> chat
+RegisterNetEvent('poker:notify', function(dataOrText)
+    --local msg = type(dataOrText) == 'table' and (dataOrText.description or dataOrText.text or dataOrText.message) or tostring(dataOrText)
+    --TriggerEvent('chat:addMessage', { args = { 'Poker', msg } })
 end)
-VORPutils = {}
-TriggerEvent("getUtils", function(utils)
-    VORPutils = utils
-	print = VORPutils.Print:initialize(print)
-end)
-RainbowCore = exports["rainbow-core"]:initiate()
+
+-- Unified notify wrapper: prefers ox_lib, falls back to chat
+local function NotifyRightTip(message, nType, duration)
+    if lib and lib.notify then
+        lib.notify({
+            title = 'Poker',
+            description = tostring(message),
+            type = nType or 'inform',
+            duration = duration
+        })
+    else
+        TriggerEvent('poker:notify', message)
+    end
+end
+
+-- Native checks for interaction readiness
+local function CanPedStartInteractionNative(ped)
+    if not ped or ped == 0 then return false end
+    if IsEntityDead(ped) or IsPedRagdoll(ped) then return false end
+    if IsPedOnMount(ped) or IsPedInAnyVehicle(ped, false) then return false end
+    if IsPedActiveInScenario(ped) then return false end
+    return true
+end
+
+-- On-screen keyboard helper (letters or numbers only)
+local function TextInput(prompt, default, numeric)
+    AddTextEntry('POKER_OSK', prompt)
+    DisplayOnscreenKeyboard(1, 'POKER_OSK', '', default or '', '', '', '', 30)
+    while UpdateOnscreenKeyboard() == 0 do
+        DisableAllControlActions(0)
+        Wait(0)
+    end
+    if GetOnscreenKeyboardResult() then
+        local res = GetOnscreenKeyboardResult()
+        if numeric then
+            res = res:gsub("[^0-9]", "")
+        else
+            res = res:gsub("[^A-Za-z]", "")
+        end
+        return res
+    end
+    return nil
+end
+
+-- Native Prompt shim with minimal VORP-like API
+local function CreateNativePrompt(label, control, mode)
+    local str = CreateVarString(10, "LITERAL_STRING", label)
+    local p = PromptRegisterBegin()
+    PromptSetControlAction(p, control)
+    PromptSetText(p, str)
+    PromptSetEnabled(p, false)
+    PromptSetVisible(p, false)
+    if mode == 'hold' then
+        PromptSetHoldMode(p, true)
+    else
+        PromptSetStandardMode(p, true)
+    end
+    PromptRegisterEnd(p)
+    return p
+end
+
+local function NewPromptGroup()
+    local groupId = math.random(0, 0xFFFFFF)
+    return {
+        RegisterPrompt = function(self, label, controlHash, _a, _b, _enabled, mode, _extra)
+            local pr = CreateNativePrompt(label, controlHash, mode)
+            PromptSetGroup(pr, groupId, 0)
+            local obj = { Prompt = pr, _mode = mode or 'click' }
+            function obj:TogglePrompt(state)
+                PromptSetEnabled(self.Prompt, state)
+                PromptSetVisible(self.Prompt, state)
+            end
+            function obj:HasCompleted()
+                if self._mode == 'hold' then
+                    return PromptHasHoldModeCompleted(self.Prompt)
+                else
+                    return PromptHasStandardModeCompleted(self.Prompt)
+                end
+            end
+            return obj
+        end,
+        ShowGroup = function(self, label)
+            PromptSetActiveGroupThisFrame(groupId, CreateVarString(10, 'LITERAL_STRING', label))
+        end
+    }
+end
+
+NativeUtils = { Prompts = { SetupPromptGroup = function() return NewPromptGroup() end } }
+
+-- Expose for later use
+CanPedStartInteraction = CanPedStartInteractionNative
+TextInputForPoker = TextInput
+RainbowCore = { CanPedStartInteraction = CanPedStartInteractionNative }
 
 local PromptGroupInGame
 local PromptGroupInGameLeave
@@ -37,6 +127,9 @@ local turnRaiseAmount = 1
 local turnBaseRaiseAmount = 1
 local isPlayerOccupied = false
 local hasLeft = false
+playingPoker = false
+local lastStep = nil
+local revealHoldUntil = 0
 
 
 if Config.DebugCommands then
@@ -108,7 +201,7 @@ end)
 -- Join game prompts
 CreateThread(function()
 
-    PromptGroupTable = VORPutils.Prompts:SetupPromptGroup()
+    PromptGroupTable = NativeUtils.Prompts:SetupPromptGroup()
     PromptStart = PromptGroupTable:RegisterPrompt("Start Game", GetHashKey(Config.Keys.StartGame), 1, 1, true, "hold", {timedeventhash = "MEDIUM_TIMED_EVENT"})
     PromptJoin = PromptGroupTable:RegisterPrompt("Join Game", GetHashKey(Config.Keys.JoinGame), 1, 1, true, "hold", {timedeventhash = "MEDIUM_TIMED_EVENT"})
 
@@ -128,34 +221,35 @@ CreateThread(function()
 
             local location = locations[nearTableLocationIndex]
 
-            if location.state ~= LOCATION_STATES.GAME_IN_PROGRESS then
-                
-                sleep = 1
+            sleep = 1
 
-                -- Join
-                if location.state == LOCATION_STATES.PENDING_GAME and location.pendingGame.initiatorNetId ~= GetPlayerServerId(PlayerId()) then
-                    local hasPlayerAlreadyJoined = false
-                    for k,v in pairs(location.pendingGame.players) do
-                        if v.netId == GetPlayerServerId(PlayerId()) then
-                            hasPlayerAlreadyJoined = true
-                        end
+            -- Join during pending game (standard)
+            if location.state == LOCATION_STATES.PENDING_GAME and location.pendingGame.initiatorNetId ~= GetPlayerServerId(PlayerId()) then
+                local hasPlayerAlreadyJoined = false
+                for k,v in pairs(location.pendingGame.players) do
+                    if v.netId == GetPlayerServerId(PlayerId()) then
+                        hasPlayerAlreadyJoined = true
                     end
-
-                    if not hasPlayerAlreadyJoined then
-
-                        PromptJoin:TogglePrompt(true)
-
-                        if location.pendingGame and location.pendingGame.ante then
-                            PromptSetText(PromptJoin.Prompt, CreateVarString(10, "LITERAL_STRING", "Join Game  |  Ante Bet: ~o~$"..location.pendingGame.ante.." ", "Title"))
-                        end
-                    end
-
-                -- Start
-                elseif location.state == LOCATION_STATES.EMPTY then
-                    PromptStart:TogglePrompt(true)
                 end
 
-                PromptGroupTable:ShowGroup("Poker Table")
+                if not hasPlayerAlreadyJoined then
+                    PromptJoin:TogglePrompt(true)
+                    if location.pendingGame and location.pendingGame.ante then
+                        PromptSetText(PromptJoin.Prompt, CreateVarString(10, "LITERAL_STRING", "Join Game  |  Ante Bet: ~o~$"..location.pendingGame.ante.." ", "Title"))
+                    end
+                end
+
+            -- Join during active game (wait for next hand)
+            elseif location.state == LOCATION_STATES.GAME_IN_PROGRESS then
+                PromptJoin:TogglePrompt(true)
+                PromptSetText(PromptJoin.Prompt, CreateVarString(10, "LITERAL_STRING", "Join Next Hand", "Title"))
+
+            -- Start new game
+            elseif location.state == LOCATION_STATES.EMPTY then
+                PromptStart:TogglePrompt(true)
+            end
+
+            PromptGroupTable:ShowGroup("Poker Table")
 
                 -- START
                 if PromptStart:HasCompleted() then
@@ -179,44 +273,18 @@ CreateThread(function()
                                 value = characterName,
                             }
                         }
-                        playersChosenName = exports.vorp_inputs:advancedInput(playersChosenNameInput)
+                        playersChosenName = characterName
                     end
 
                     if not playersChosenName or playersChosenName=="" then
-                        VORPcore.NotifyRightTip("You must enter a name.", 6 * 1000)
+                        NotifyRightTip("You must enter a name.", 'error', 6 * 1000)
                     elseif string.len(playersChosenName) < 3 then
-                        VORPcore.NotifyRightTip("Your name must be at least 3 letters long.", 6 * 1000)
+                        NotifyRightTip("Your name must be at least 3 letters long.", 'error', 6 * 1000)
                     else
                         Wait(100)
 
-                        local anteAmount
-                        if Config.DebugOptions.SkipStartGameOptions then
-                            anteAmount = 5
-                        else
-                            local anteAmountInput = {
-                                type = "enableinput", -- don't touch
-                                inputType = "input", -- input type
-                                button = "Confirm", -- button name
-                                placeholder = "5", -- placeholder name
-                                style = "block", -- don't touch
-                                attributes = {
-                                    inputHeader = "ANTE (INITIAL BET) AMOUNT", -- header
-                                    type = "text", -- inputype text, number,date,textarea ETC
-                                    pattern = "[0-9]+", --  only numbers "[0-9]" | for letters only "[A-Za-z]+" 
-                                    title = "Numbers only", -- if input doesnt match show this message
-                                    style = "border-radius: 10px; background-color: ; border:none;"-- style 
-                                }
-                            }
-                            anteAmount = exports.vorp_inputs:advancedInput(anteAmountInput)
-                        end
-
-                        if not anteAmount or anteAmount=="" then
-                            VORPcore.NotifyRightTip("You must enter an ante amount.", 6 * 1000)
-                        elseif tonumber(anteAmount) < 1 then
-                            VORPcore.NotifyRightTip("The ante amount must be at least $1.", 6 * 1000)
-                        else
-                            TriggerServerEvent("rainbow_poker:Server:StartNewPendingGame", playersChosenName, anteAmount, nearTableLocationIndex)
-                        end
+                        PokerPendingStartContext = { name = playersChosenName, locationIndex = nearTableLocationIndex }
+                        UI:OpenBlindsModal({ min = 1, max = 1000, defaultBlind = 5 })
                     end
 
                     Wait(3 * 1000)
@@ -240,13 +308,13 @@ CreateThread(function()
                             value = characterName,
                         }
                     }
-                    local playersChosenName = exports.vorp_inputs:advancedInput(playersChosenNameInput)
+                    local playersChosenName = characterName
 
                     TriggerServerEvent("rainbow_poker:Server:JoinGame", playersChosenName, nearTableLocationIndex)
 
                     Wait(3 * 1000)
                 end
-            end
+            
         end
 
         Wait(sleep)
@@ -257,7 +325,7 @@ end)
 -- Begin game prompt
 CreateThread(function()
 
-    PromptGroupFinalize = VORPutils.Prompts:SetupPromptGroup()
+    PromptGroupFinalize = NativeUtils.Prompts:SetupPromptGroup()
     PromptBegin = PromptGroupFinalize:RegisterPrompt("Begin Game", GetHashKey(Config.Keys.BeginGame), 1, 1, true, "hold", {timedeventhash = "MEDIUM_TIMED_EVENT"})
     PromptCancel = PromptGroupFinalize:RegisterPrompt("Cancel Game", GetHashKey(Config.Keys.CancelGame), 1, 1, true, "hold", {timedeventhash = "MEDIUM_TIMED_EVENT"})
 
@@ -265,20 +333,26 @@ CreateThread(function()
 
         local sleep = 1000
 
-        if not isInGame and isNearTable and nearTableLocationIndex and locations[nearTableLocationIndex] and not isPlayerOccupied then
+        -- default hidden each tick
+        PromptBegin:TogglePrompt(false)
+        PromptCancel:TogglePrompt(false)
+
+        if not isInGame and nearTableLocationIndex and locations[nearTableLocationIndex] and playingPoker then
             sleep = 1
 
             local location = locations[nearTableLocationIndex]
 
             if location.state == LOCATION_STATES.PENDING_GAME and location.pendingGame.initiatorNetId == GetPlayerServerId(PlayerId()) then
 
+                -- show prompts while seated/pending
+                PromptBegin:TogglePrompt(true)
+                PromptCancel:TogglePrompt(true)
+
                 PromptSetText(PromptBegin.Prompt, CreateVarString(10, "LITERAL_STRING", "Begin Game  |  Players: ~o~" .. #location.pendingGame.players .. " ", "Title"))
 
                 PromptSetPriority(PromptBegin.Prompt, 3)
 
                 PromptGroupFinalize:ShowGroup("Poker Table")
-
-                -- print('showing')
 
                 -- BEGIN (FINALIZED)
                 if PromptBegin:HasCompleted() then
@@ -289,6 +363,7 @@ CreateThread(function()
                 if PromptCancel:HasCompleted() then
                     TriggerServerEvent("rainbow_poker:Server:CancelPendingGame", nearTableLocationIndex)
                 end
+
 
             end
         end
@@ -303,15 +378,17 @@ end)
 -- In-game prompts
 CreateThread(function()
 
-    PromptGroupInGame = VORPutils.Prompts:SetupPromptGroup()
+    PromptGroupInGame = NativeUtils.Prompts:SetupPromptGroup()
     PromptCall = PromptGroupInGame:RegisterPrompt("Call (Match)", GetHashKey(Config.Keys.ActionCall), 1, 1, true, "click", {})
     PromptRaise = PromptGroupInGame:RegisterPrompt("Raise $1", GetHashKey(Config.Keys.ActionRaise), 1, 1, true, "click", {})
     PromptCheck = PromptGroupInGame:RegisterPrompt("Check", GetHashKey(Config.Keys.ActionCheck), 1, 1, true, "click", {})
     PromptFold = PromptGroupInGame:RegisterPrompt("Fold", GetHashKey(Config.Keys.ActionFold), 1, 1, true, "hold", {timedeventhash = "MEDIUM_TIMED_EVENT"})
     PromptCycleAmount = PromptGroupInGame:RegisterPrompt("Change Amount", GetHashKey(Config.Keys.SubactionCycleAmount), 1, 1, true, "click", {})
     
-    PromptGroupInGameLeave = VORPutils.Prompts:SetupPromptGroup()
+    PromptGroupInGameLeave = NativeUtils.Prompts:SetupPromptGroup()
     PromptLeave = PromptGroupInGameLeave:RegisterPrompt("Leave", GetHashKey(Config.Keys.LeaveGame), 1, 1, true, "hold", {timedeventhash = "MEDIUM_TIMED_EVENT"})
+
+    local wasMyTurn = false
 
     while true do
 
@@ -319,6 +396,17 @@ CreateThread(function()
 
         if isInGame and game and game.step ~= ROUNDS.PENDING and game.step ~= ROUNDS.SHOWDOWN then
             sleep = 0
+
+            PromptCall:TogglePrompt(false)
+            PromptSetEnabled(PromptCall.Prompt, false)
+            PromptRaise:TogglePrompt(false)
+            PromptSetEnabled(PromptRaise.Prompt, false)
+            PromptCheck:TogglePrompt(false)
+            PromptSetEnabled(PromptCheck.Prompt, false)
+            PromptFold:TogglePrompt(false)
+            PromptSetEnabled(PromptFold.Prompt, false)
+            PromptCycleAmount:TogglePrompt(false)
+            PromptSetEnabled(PromptCycleAmount.Prompt, false)
 
 
             -- Block inputs
@@ -345,7 +433,25 @@ CreateThread(function()
             -- print('game', game)
             -- print('game.currentTurn == thisPlayer.order', game["currentTurn"], thisPlayer["order"])
 
-            if game["currentTurn"] == thisPlayer["order"] then
+            local myTurn = (game.currentTurn == thisPlayer.order) and (not thisPlayer.hasFolded)
+
+            if myTurn and not wasMyTurn then Wait(1000) end
+
+            if myTurn then
+                local canEnable = GetGameTimer() >= revealHoldUntil
+                if not canEnable and promptsActive then
+                    PromptCall:TogglePrompt(false)
+                    PromptSetEnabled(PromptCall.Prompt, false)
+                    PromptRaise:TogglePrompt(false)
+                    PromptSetEnabled(PromptRaise.Prompt, false)
+                    PromptCheck:TogglePrompt(false)
+                    PromptSetEnabled(PromptCheck.Prompt, false)
+                    PromptFold:TogglePrompt(false)
+                    PromptSetEnabled(PromptFold.Prompt, false)
+                    PromptCycleAmount:TogglePrompt(false)
+                    PromptSetEnabled(PromptCycleAmount.Prompt, false)
+                    promptsActive = false
+                end
 
 
                 if not thisPlayer.hasFolded then
@@ -353,28 +459,36 @@ CreateThread(function()
                     PromptSetText(PromptRaise.Prompt, CreateVarString(10, "LITERAL_STRING", string.format("Raise by $%d | (~o~$%d~s~)", turnRaiseAmount, game.currentGoingBet + turnRaiseAmount), "Title"))
                     PromptSetText(PromptCall.Prompt, CreateVarString(10, "LITERAL_STRING", string.format("Call | (~o~$%d~s~)", (game.roundsHighestBet - thisPlayer.amountBetInRound)), "Title"))
 
-                    -- Conditionally show Call or Check depending on this round's betting circumstances
-                    if game.roundsHighestBet and game.roundsHighestBet > 0 then
-                        PromptCheck:TogglePrompt(false)
-                        PromptSetEnabled(PromptCheck.Prompt, false)
-                        PromptCall:TogglePrompt(true)
-                        PromptSetEnabled(PromptCall.Prompt, true)
-                    else
-                        PromptCheck:TogglePrompt(true)
-                        PromptSetEnabled(PromptCheck.Prompt, true)
-                        PromptCall:TogglePrompt(false)
-                        PromptSetEnabled(PromptCall.Prompt, false)
+                    if canEnable then
+                        -- Conditionally show Call or Check depending on this round's betting circumstances
+                        if game.roundsHighestBet and game.roundsHighestBet > 0 then
+                            PromptCheck:TogglePrompt(false)
+                            PromptSetEnabled(PromptCheck.Prompt, false)
+                            PromptCall:TogglePrompt(true)
+                            PromptSetEnabled(PromptCall.Prompt, true)
+                        else
+                            PromptCheck:TogglePrompt(true)
+                            PromptSetEnabled(PromptCheck.Prompt, true)
+                            PromptCall:TogglePrompt(false)
+                            PromptSetEnabled(PromptCall.Prompt, false)
+                        end
+
+                        PromptRaise:TogglePrompt(true)
+                        PromptSetEnabled(PromptRaise.Prompt, true)
+                        PromptFold:TogglePrompt(true)
+                        PromptSetEnabled(PromptFold.Prompt, true)
+                        PromptCycleAmount:TogglePrompt(true)
+                        PromptSetEnabled(PromptCycleAmount.Prompt, true)
+
+                        PromptGroupInGame:ShowGroup("Poker Game")
                     end
-
-
-                    PromptGroupInGame:ShowGroup("Poker Game")
 
 
                     if PromptCall:HasCompleted() then
                         if Config.DebugPrint then print("PromptCall") end
 
                         TriggerServerEvent("rainbow_poker:Server:PlayerActionCall")
-                        TriggerEvent("rainbow_core:PlayAudioFile", Config.Audio.ChipDrop, Config.AudioVolume)
+                        TriggerEvent('poker:playAudio', Config.Audio.ChipDrop)
 
                         PlayAnimation("Bet")
                     end
@@ -383,7 +497,7 @@ CreateThread(function()
                         if Config.DebugPrint then print("PromptRaise") end
 
                         TriggerServerEvent("rainbow_poker:Server:PlayerActionRaise", turnRaiseAmount)
-                        TriggerEvent("rainbow_core:PlayAudioFile", Config.Audio.ChipDrop, Config.AudioVolume)
+                        TriggerEvent('poker:playAudio', Config.Audio.ChipDrop)
 
                         PlayAnimation("Bet")
                     end
@@ -401,6 +515,8 @@ CreateThread(function()
 
                         TriggerServerEvent("rainbow_poker:Server:PlayerActionFold")
 
+                        if Props then Props:OnLocalFold() end
+
                         PlayAnimation("Fold")
                         PlayAnimation("NoCards")
                     end
@@ -408,17 +524,13 @@ CreateThread(function()
                     if PromptCycleAmount:HasCompleted() then
                         if Config.DebugPrint then print("PromptCycleAmount") end
 
-                        if turnRaiseAmount == turnBaseRaiseAmount then
-                            turnRaiseAmount = turnBaseRaiseAmount * 2
-                        elseif turnRaiseAmount == turnBaseRaiseAmount * 2 then
-                            turnRaiseAmount = turnBaseRaiseAmount * 4
-                        elseif turnRaiseAmount == turnBaseRaiseAmount * 4 then
-                            turnRaiseAmount = turnBaseRaiseAmount * 8
-                        elseif turnRaiseAmount == turnBaseRaiseAmount * 8 then
+                        if turnRaiseAmount >= turnBaseRaiseAmount * 5 then
                             turnRaiseAmount = turnBaseRaiseAmount
+                        else
+                            turnRaiseAmount = turnRaiseAmount + turnBaseRaiseAmount
                         end
 
-                        TriggerEvent("rainbow_core:PlayAudioFile", Config.Audio.ChipTap, Config.AudioVolume)
+                        TriggerEvent('poker:playAudio', Config.Audio.ChipTap)
                     end
                 
                 end
@@ -447,6 +559,8 @@ CreateThread(function()
 
             end
 
+            wasMyTurn = myTurn
+
         elseif isInGame and game and game.step == ROUNDS.SHOWDOWN then
 
             sleep = 0
@@ -473,28 +587,28 @@ CreateThread(function()
 end)
 
 
--- Check for deaths (or other "occupying" things)
+-- Check for deaths (or other hard-occupying things)
 CreateThread(function()
 
     while true do
 
         local sleep = 1000
 
-        if isInGame and game and isPlayerOccupied then
-            
-            if Config.DebugPrint then print("became occupied mid-game") end
+        if isInGame and game then
+            local ped = PlayerPedId()
+            local hardOccupied = IsEntityDead(ped) or IsPedRagdoll(ped) or IsPedOnMount(ped) or IsPedInAnyVehicle(ped, false)
+            if hardOccupied then
+                if Config.DebugPrint then print("became hard-occupied mid-game") end
 
-            -- Fold first
-            TriggerServerEvent("rainbow_poker:Server:PlayerActionFold")
-            turnRaiseAmount = 1
+                TriggerServerEvent("rainbow_poker:Server:PlayerActionFold")
+                turnRaiseAmount = turnBaseRaiseAmount
 
-            Wait(200)
+                Wait(200)
 
-            -- Now leave
-            TriggerServerEvent("rainbow_poker:Server:PlayerLeave")
+                TriggerServerEvent("rainbow_poker:Server:PlayerLeave")
 
-            sleep = 10 * 1000
-
+                sleep = 10 * 1000
+            end
         end
 
         Wait(sleep)
@@ -515,23 +629,26 @@ AddEventHandler("rainbow_poker:Client:ReturnRequestCharacterName", function(_nam
 end)
 
 RegisterNetEvent("rainbow_poker:Client:ReturnJoinGame")
-AddEventHandler("rainbow_poker:Client:ReturnJoinGame", function(locationIndex, player)
+AddEventHandler("rainbow_poker:Client:ReturnJoinGame", function(locationIndex, player, seatIndex)
     
-    if Config.DebugPrint then print("rainbow_poker:Client:ReturnJoinGame", locationIndex, player) end
+    if Config.DebugPrint then print("rainbow_poker:Client:ReturnJoinGame", locationIndex, player, seatIndex) end
 
     local locationId = locations[locationIndex].id
 
-    startChairScenario(locationId, player.order)
+    playingPoker = true
+    startChairScenario(locationId, seatIndex or player.order)
 end)
 
 RegisterNetEvent("rainbow_poker:Client:ReturnStartNewPendingGame")
-AddEventHandler("rainbow_poker:Client:ReturnStartNewPendingGame", function(locationIndex, player)
+AddEventHandler("rainbow_poker:Client:ReturnStartNewPendingGame", function(locationIndex, player, seatIndex)
     
-    if Config.DebugPrint then print("rainbow_poker:Client:ReturnStartNewPendingGame", locationIndex, player) end
+    if Config.DebugPrint then print("rainbow_poker:Client:ReturnStartNewPendingGame", locationIndex, player, seatIndex) end
 
     local locationId = locations[locationIndex].id
 
-    startChairScenario(locationId, player.order)
+    playingPoker = true
+    startChairScenario(locationId, seatIndex or player.order)
+
 end)
 
 RegisterNetEvent("rainbow_poker:Client:CancelPendingGame")
@@ -539,6 +656,7 @@ AddEventHandler("rainbow_poker:Client:CancelPendingGame", function(locationIndex
 
 	if Config.DebugPrint then print("rainbow_poker:Client:CancelPendingGame", locationIndex) end
 	
+    playingPoker = false
     clearPedTaskAndUnfreeze(true)
    
 end)
@@ -553,12 +671,20 @@ AddEventHandler("rainbow_poker:Client:StartGame", function(_game, playerSeatOrde
     game = _game
     isInGame = true
 
+    turnBaseRaiseAmount = (game and tonumber(game.ante) and tonumber(game.ante) > 0) and tonumber(game.ante) or 1
+    turnRaiseAmount = turnBaseRaiseAmount
+
     local locationId = locations[nearTableLocationIndex].id
     startChairScenario(locationId, playerSeatOrder)
 
-    TriggerEvent("rainbow_core:PlayAudioFile", Config.Audio.CardsDeal, Config.AudioVolume)
+    TriggerEvent('poker:playAudio', Config.Audio.CardsDeal)
    
     PlayAnimation("HoldCards")
+
+    if Props and locations and nearTableLocationIndex and locations[nearTableLocationIndex] then
+        local locationId = locations[nearTableLocationIndex].id
+        Props:Start(game, locationId, playerSeatOrder)
+    end
 end)
 
 RegisterNetEvent("rainbow_poker:Client:UpdatePokerTables")
@@ -579,11 +705,19 @@ AddEventHandler("rainbow_poker:Client:TriggerUpdate", function(_game)
 
     game = _game
 
-    if _game.currentGoingBet and _game.currentGoingBet > 1 then
-        turnBaseRaiseAmount = _game.currentGoingBet
-    else
-        turnBaseRaiseAmount = 1
+    if Props then
+        Props:Update(game)
     end
+
+    local prevStep = lastStep
+    if game then
+        lastStep = game.step
+        if prevStep ~= nil and prevStep ~= game.step and game.step ~= ROUNDS.PENDING and game.step ~= ROUNDS.SHOWDOWN then
+            revealHoldUntil = GetGameTimer() + 4000
+        end
+    end
+
+    turnBaseRaiseAmount = (game and tonumber(game.ante) and tonumber(game.ante) > 0) and tonumber(game.ante) or 1
     turnRaiseAmount = turnBaseRaiseAmount
    
 end)
@@ -594,8 +728,13 @@ AddEventHandler("rainbow_poker:Client:ReturnPlayerLeave", function(locationIndex
     if Config.DebugPrint then print("rainbow_poker:Client:ReturnPlayerLeave") end
 
     hasLeft = true
+    playingPoker = false
     UI:CloseAll()
     clearPedTaskAndUnfreeze(true)
+
+    if Props then
+        Props:CleanupAll()
+    end
 
 end)
 
@@ -606,9 +745,9 @@ AddEventHandler("rainbow_poker:Client:WarnTurnTimer", function(locationIndex, pl
 
     local timeRemaining = Config.TurnTimeoutWarningInSeconds
 
-    VORPcore.NotifyRightTip(string.format("WARNING: Take action now. Less than %d seconds remaining.", timeRemaining), 6 * 1000)
+    NotifyRightTip(string.format("WARNING: Take action now. Less than %d seconds remaining.", timeRemaining), 'warning', 6 * 1000)
 
-    TriggerEvent("rainbow_core:PlayAudioFile", Config.Audio.TurnTimerWarn, Config.AudioVolume)
+    TriggerEvent('poker:playAudio', Config.Audio.TurnTimerWarn)
 end)
 
 RegisterNetEvent("rainbow_poker:Client:AlertWin")
@@ -634,13 +773,22 @@ AddEventHandler("rainbow_poker:Client:CleanupFinishedGame", function()
         clearPedTaskAndUnfreeze(true)
     end
 
+    if Props then
+        Props:CleanupAll()
+    end
+
     game = nil
     isInGame = false
     hasLeft = false
-
+    playingPoker = false
     
 end)
 
+if Config.DebugCommands then
+    RegisterCommand("poker:spawnprops", function()
+        if Props then Props:DebugSpawnCandidates() end
+    end, false)
+end
 
 
 
@@ -768,6 +916,9 @@ AddEventHandler("onResourceStop", function(resourceName)
 
         clearPedTaskAndUnfreeze(false)
         
+        if Props then
+            Props:CleanupAll()
+        end
     end
 
 end)

@@ -1,8 +1,8 @@
 
 Config = {}
 
-Config.Debug = true
-Config.DebugPrint = true
+Config.Debug = false
+Config.DebugPrint = false
 Config.DebugPrintUnsafe = false
 Config.DebugCommands = false
 Config.DebugOptions = {
@@ -20,6 +20,12 @@ Config.Keys = {
     BeginGame = "INPUT_CREATOR_ACCEPT", -- ENTER
     CancelGame = "INPUT_FRONTEND_RS", -- X
     LeaveGame = "INPUT_FRONTEND_DOWN", -- DOWN
+    AddNpc = "INPUT_INTERACT_LOCKON_POS", -- G (default)
+}
+
+Config.NpcCash = {
+    Min = 100,
+    Max = 500,
 }
 
 Config.Locations = {
@@ -533,4 +539,5 @@ Config.Animations = {
     },
 }
 
-Config.Webhook = "https://discord.com/api/webhooks/..."
+-- Webhooks removed; keep this unset
+-- Config.Webhook = nil

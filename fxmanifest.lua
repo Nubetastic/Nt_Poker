@@ -13,6 +13,7 @@ server_scripts {
 
 shared_scripts {
 	"config.lua",
+	"configProps.lua",
 	"shared/*.lua",
 	"shared/**/*.lua",
 }
@@ -21,9 +22,11 @@ files {
 	"ui/dist/*",
 	"ui/dist/**/*",
 	"ui/dist/img/card/*",
+	"ui/public/*",
+	"ui/public/**/*",
   }
 ui_page "ui/dist/index.html"
 
 
-author 'Shamey Winehouse'
+author 'Nubetastic'
 description 'License: GPL-3.0-only'
