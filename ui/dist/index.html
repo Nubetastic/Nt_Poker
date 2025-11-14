@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Poker</title>
+    <link rel="stylesheet" href="./assets/index.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./assets/vendor.js"></script>
+    <script type="module" src="./assets/index.js"></script>
+    <style>
+      #blinds-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+      #blinds-modal{width:420px;max-width:90vw;background:#111;border:1px solid #333;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.4);color:#eee}
+      #blinds-modal h3{margin:0;padding:16px 20px;font-size:18px;border-bottom:1px solid #222}
+      #blinds-modal .content{padding:16px 20px}
+      #blinds-modal .actions{display:flex;gap:10px;justify-content:flex-end;padding:0 20px 16px}
+      #blinds-input{width:100%;padding:10px 12px;border-radius:6px;border:1px solid #444;background:#1a1a1a;color:#eee;font-size:16px}
+      #blinds-cancel,#blinds-confirm{padding:8px 14px;border-radius:6px;border:1px solid #444;background:#222;color:#eee;cursor:pointer}
+      #blinds-confirm{background:#396cd8;border-color:#396cd8}
+      #blinds-cancel:hover{background:#2a2a2a}
+      #blinds-confirm:hover{filter:brightness(1.1)}
+    </style>
+    <div id="blinds-modal-overlay">
+      <div id="blinds-modal" role="dialog" aria-modal="true" aria-labelledby="blinds-title">
+        <h3 id="blinds-title">Set Blinds</h3>
+        <div class="content">
+          <label for="blinds-input" style="display:block;margin-bottom:6px;color:#ccc">Blind Amount ($)</label>
+          <input id="blinds-input" type="number" min="1" max="1000" step="1" value="5" />
+          <div id="blinds-inc" style="margin-top:10px;color:#bbb">Raise Increment: +$1</div>
+          <div id="blinds-max" style="color:#bbb">Max Bet This Hand: $5</div>
+        </div>
+        <div class="actions">
+          <button id="blinds-cancel" type="button">Cancel</button>
+          <button id="blinds-confirm" type="button">Confirm</button>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function(){
+        const overlay = document.getElementById('blinds-modal-overlay');
+        const input = document.getElementById('blinds-input');
+        const btnOk = document.getElementById('blinds-confirm');
+        const btnCancel = document.getElementById('blinds-cancel');
+        const incEl = document.getElementById('blinds-inc');
+        const maxEl = document.getElementById('blinds-max');
+        let min=1, max=1000;
+        function render(){
+          const v = Number(input.value)||min;
+          incEl.textContent = 'Raise Increment: +$' + v;
+          maxEl.textContent = 'Max Bet This Hand: $' + Math.floor(v*5);
+        }
+        function show(opts){
+          min = Number(opts && opts.min || 1);
+          max = Number(opts && opts.max || 1000);
+          const def = Number(opts && opts.defaultBlind || min);
+          input.min = String(min);
+          input.max = String(max);
+          input.value = String(def);
+          render();
+          overlay.style.display = 'flex';
+          setTimeout(()=>input.focus(), 0);
+        }
+        function hide(){ overlay.style.display = 'none'; }
+        window.addEventListener('message', function(ev){
+          const d = ev && ev.data || {};
+          if(d.type === 'openBlindsModal') show(d);
+        });
+        function post(name, body){
+          try{ fetch(`https://${GetParentResourceName()}/${name}`, {method:'POST', body: JSON.stringify(body||{})}); }catch(e){}
+        }
+        input.addEventListener('input', render);
+        btnOk.addEventListener('click', function(){
+          let v = Number(input.value);
+          if(!isFinite(v)) return;
+          if(v < min) v = min;
+          if(v > max) v = max;
+          hide();
+          post('blindsSelected', { blind: Math.floor(v) });
+        });
+        btnCancel.addEventListener('click', function(){ hide(); post('cancelBlinds'); });
+        overlay.addEventListener('click', function(e){ if(e.target===overlay){ hide(); post('cancelBlinds'); }});
+        document.addEventListener('keydown', function(e){
+          if(overlay.style.display === 'flex'){
+            if(e.key==='Enter'){ btnOk.click(); }
+            if(e.key==='Escape'){ btnCancel.click(); }
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

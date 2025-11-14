@@ -70,7 +70,7 @@ const F = {
         },
         methods: {
             async onMessage(a) {
-                a.data.type === "start" && (this.viewPokerGame = !0, this.game = a.data.game, this.thisPlayer = a.data.thisPlayer, this.winScenario = void 0), a.data.type === "update" && (this.game&&this.game.step == "INITIAL" && a.data.game.step == "FLOP" && (await b(1e3), this.fireEvent("playCardFlip"), this.game.board.cardV.isRevealed = !0, await b(1100), this.fireEvent("playCardFlip"), this.game.board.cardW.isRevealed = !0, await b(1200), this.fireEvent("playCardFlip"), this.game.board.cardX.isRevealed = !0), this.game&&this.game.step == "FLOP" && a.data.game.step == "TURN" && (await b(1e3), this.fireEvent("playCardFlip"), this.game.board.cardY.isRevealed = !0), this.game&&this.game.step == "TURN" && a.data.game.step == "RIVER" && (await b(1e3), this.fireEvent("playCardFlip"), this.game.board.cardZ.isRevealed = !0), this.game = a.data.game, this.thisPlayer = a.data.thisPlayer), a.data.type === "win" && (this.winScenario = a.data.winScenario, this.winScenario.thisPlayersWinningHand && (this.winScenario.thisPlayersWinningHand.winningHandType = this.winScenario.thisPlayersWinningHand.winningHandType.toString().replace(/_/g, " "))), a.data.type === "close" && (this.viewPokerGame = !1, this.game = void 0, this.thisPlayer = void 0, this.winScenario = void 0)
+                a.data.type === "start" && (this.viewPokerGame = !0, this.game = a.data.game, this.thisPlayer = a.data.thisPlayer, this.winScenario = void 0), a.data.type === "update" && (this.game.step == "INITIAL" && a.data.game.step == "FLOP" && (await b(1e3), this.fireEvent("playCardFlip"), this.game.board.cardV.isRevealed = !0, await b(1100), this.fireEvent("playCardFlip"), this.game.board.cardW.isRevealed = !0, await b(1200), this.fireEvent("playCardFlip"), this.game.board.cardX.isRevealed = !0), this.game.step == "FLOP" && a.data.game.step == "TURN" && (await b(1e3), this.fireEvent("playCardFlip"), this.game.board.cardY.isRevealed = !0), this.game.step == "TURN" && a.data.game.step == "RIVER" && (await b(1e3), this.fireEvent("playCardFlip"), this.game.board.cardZ.isRevealed = !0), this.game = a.data.game, this.thisPlayer = a.data.thisPlayer), a.data.type === "win" && (this.winScenario = a.data.winScenario, this.winScenario.thisPlayersWinningHand && (this.winScenario.thisPlayersWinningHand.winningHandType = this.winScenario.thisPlayersWinningHand.winningHandType.toString().replace(/_/g, " "))), a.data.type === "close" && (this.viewPokerGame = !1, this.game = void 0, this.thisPlayer = void 0, this.winScenario = void 0)
             },
             fireEvent(a, s = {}) {
                 fetch(`https://${GetParentResourceName()}/` + a, {
@@ -102,7 +102,7 @@ const F = {
             getThisRoundsActionFromPlayer(a) {
                 if (a.hasFolded) return "Folded";
                 if (a.order == this.game.currentTurn) return "Deciding";
-                switch (this.game&&this.game.step) {
+                switch (this.game.step) {
                     case "INITIAL":
                         return a.actionInitial ?? "Waiting";
                     case "FLOP":
@@ -114,8 +114,7 @@ const F = {
                     default:
                         return ""
                 }
-            },
-            describeHand(a){try{const h=a||this.winScenario&&this.winScenario.winningHand;if(!h)return"";const cards=h.cards||[];const type=(h.winningHandType||"").toString().replace(/_/g," ");const ranks=cards.map(c=>(c.royalty||"").toString().toUpperCase());const order=["2","3","4","5","6","7","8","9","10","T","J","Q","K","A"];const name=r=>({A:"Ace",K:"King",Q:"Queen",J:"Jack",T:"10","10":"10"}[r]||r);const counts={};for(const r of ranks)counts[r]=(counts[r]||0)+1;const sorted=[...ranks].sort((a,b)=>order.indexOf(a)-order.indexOf(b));const high=name(sorted[sorted.length-1]||"");switch((h.winningHandType||"").toString()){case"ONE_PAIR":{const pr=Object.keys(counts).find(r=>counts[r]===2);return`Pair of ${name(pr)}s`;}case"TWO_PAIRS":{const prs=Object.keys(counts).filter(r=>counts[r]===2).sort((a,b)=>order.indexOf(a)-order.indexOf(b));const hi=name(prs[prs.length-1]);const lo=name(prs[prs.length-2]);return`Two pair, ${hi}s and ${lo}s`;}case"THREE_OF_A_KIND":{const tr=Object.keys(counts).find(r=>counts[r]===3);return`Three of a kind, ${name(tr)}s`;}case"STRAIGHT":return`Straight, ${high} high`;case"STRAIGHT_FLUSH":return`Straight flush, ${high} high`;case"FLUSH":return`Flush, ${high} high`;case"FULL_HOUSE":{const tr=Object.keys(counts).find(r=>counts[r]===3);const pr=Object.keys(counts).find(r=>counts[r]===2);return`Full house, ${name(tr)}s over ${name(pr)}s`;}case"FOUR_OF_A_KIND":{const qr=Object.keys(counts).find(r=>counts[r]===4);return`Four of a kind, ${name(qr)}s`;}case"ROYAL_FLUSH":return"Royal flush";case"HIGH_CARD":default:return`${high} high`;} }catch(_){return a&&a.winningHandType?a.winningHandType.toString().replace(/_/g," "):"";} }
+            }
         }
     },
     N = {
@@ -180,11 +179,7 @@ const F = {
         key: 0
     },
     U = {
-        class: "d-flex pl-3",
-        style: {
-            "column-gap": "8px",
-            "align-items": "center"
-        }
+        class: "d-flex pl-3"
     },
     q = {
         class: "card player-card"
@@ -193,10 +188,7 @@ const F = {
         class: "card player-card"
     },
     J = {
-        class: "text-lime player-name",
-        style: {
-            "font-size": "20px"
-        }
+        class: "text-lime player-name"
     },
     K = {
         class: "text-amber-lighten-3"
@@ -303,19 +295,15 @@ function ge(a, s, f, c, r, o) {
         })]),
         _: 1
     })])]), e("div", $, [t(T, {
-        class: "pb-0",
+        class: "ml-5 pb-5",
         style: {
-            "background-color": "rgba(0, 0, 0, 0.4)",
-            "position": "absolute",
-            "top": "0",
-            "left": "0",
-            "overflow": "hidden"
+            "background-color": "rgba(0, 0, 0, 0.4)"
         },
-        width: "15%",
+        width: "600",
         rounded: ""
     }, {
         default: i(() => [t(_, {
-            class: "mx-0 mb-0 w-auto px-10 py-0"
+            class: "mx-0 mb-0 w-auto px-10 py-3"
         }, {
             default: i(() => [t(m, null, {
                 default: i(() => [t(n, {
@@ -324,18 +312,8 @@ function ge(a, s, f, c, r, o) {
                     default: i(() => [t(_, {
                         class: "pa-0"
                     }, {
-                        default: i(() => [t(m, {
-                            class: "table-pot-row"
-                        }, {
-                            default: i(() => [t(n, {
-                                cols: "12"
-                            }, {
-                                default: i(() => [e("span", { class: "text-amber-lighten-3", style: { "font-size": "24px", "font-weight": "700" } }, "Table Pot: ", -1), e("span", { class: "text-amber", style: { "font-size": "24px", "font-weight": "700", "margin-left": "6px" } }, "$" + l(this.game.bettingPool), 1)]),
-                                _: 1
-                            })]),
-                            _: 1
-                        }), (h(!0), g(v, null, k(this.game.players, u => (h(), P(m, {
-                            class: "player"
+                        default: i(() => [(h(!0), g(v, null, k(this.game.players, u => (h(), P(m, {
+                            class: "player mb-1"
                         }, {
                             default: i(() => [t(n, {
                                 cols: "12",
@@ -344,43 +322,60 @@ function ge(a, s, f, c, r, o) {
                                 default: i(() => [t(_, {
                                     class: "pb-0"
                                 }, {
-                                    default: i(() => [(h(), g("div", M, [t(m, {
-                                        class: "player-cards",
-                                        style: { "margin-bottom": "0" }
+                                    default: i(() => [this.game.step == "SHOWDOWN" ? (h(), g("div", M, [t(m, {
+                                        class: "player-cards"
                                     }, {
                                         default: i(() => [t(n, {
                                             cols: "12",
                                             class: "pa-0"
                                         }, {
-                                            default: i(() => [e("div", U, [e("span", J, l(u.name) + ": ", 1), e("div", q, [t(d, {
+                                            default: i(() => [e("div", U, [e("div", q, [t(d, {
                                                 src: this.translateCardToPng(u.cardA.isRevealed, u.cardA.royalty, u.cardA.suit),
-                                                width: "32",
-                                                height: "90",
-                                                style: { "transform": "scale(0.5)", "transform-origin": "top", "display": "overlay" }
+                                                width: "32"
                                             }, null, 8, ["src"])]), e("div", z, [t(d, {
                                                 src: this.translateCardToPng(u.cardB.isRevealed, u.cardB.royalty, u.cardB.suit),
-                                                width: "32",
-                                                height: "90",
-                                                style: { "transform": "scale(0.5)", "transform-origin": "top", "display": "overlay" }
+                                                width: "32"
                                             }, null, 8, ["src"])])])]),
                                             _: 2
                                         }, 1024)]),
                                         _: 2
-                                    }, 1024)])), t(m, {
-                                        class: "player-data ma-0 pa-0",
-                                        style: { "margin-top": "0" }
+                                    }, 1024)])) : p("", !0), t(m, {
+                                        class: "player-data ma-0 pa-0"
                                     }, {
                                         default: i(() => [t(n, {
-                                            cols: "12",
-                                            class: "player-data-item pb-0"
+                                            cols: "4",
+                                            class: "player-data-item pl-0 pb-1"
                                         }, {
-                                            default: i(() => [e("span", { style: { "font-size": "14px" } }, "Action: " + l(o.getThisRoundsActionFromPlayer(u) + (u.amountBetInRound > 0 ? " $" + u.amountBetInRound : "")), 1)]),
+                                            default: i(() => [e("span", J, l(u.name), 1)]),
                                             _: 2
                                         }, 1024), t(n, {
-                                            cols: "12",
+                                            cols: "3",
                                             class: "player-data-item pb-0"
                                         }, {
-                                            default: i(() => [e("span", { class: "text-amber", style: { "font-size": "14px" } }, "Total Bet: $" + l(u.totalAmountBetInGame), 1)]),
+                                            default: i(() => [e("span", null, l(o.getThisRoundsActionFromPlayer(u)), 1)]),
+                                            _: 2
+                                        }, 1024), t(n, {
+                                            cols: "2",
+                                            class: "player-data-item pb-0"
+                                        }, {
+                                            default: i(() => [e("span", K, "$" + l(u.amountBetInRound), 1)]),
+                                            _: 2
+                                        }, 1024), t(n, {
+                                            cols: "2",
+                                            class: "player-data-item pb-0"
+                                        }, {
+                                            default: i(() => [e("span", Q, "$" + l(u.totalAmountBetInGame), 1)]),
+                                            _: 2
+                                        }, 1024), t(n, {
+                                            cols: "1",
+                                            class: "player-data-item pb-0"
+                                        }, {
+                                            default: i(() => [e("div", null, [u.order == this.game.currentTurn ? (h(), P(x, {
+                                                key: 0,
+                                                icon: "mdi-arrow-left-bold-circle",
+                                                size: "x-small",
+                                                class: "text-light-blue pb-3 opacity-90"
+                                            })) : p("", !0)])]),
                                             _: 2
                                         }, 1024)]),
                                         _: 2
@@ -390,7 +385,37 @@ function ge(a, s, f, c, r, o) {
                                 _: 2
                             }, 1024)]),
                             _: 2
-                        }, 1024))), 256)), p("", !0), p("", !0)]),
+                        }, 1024))), 256)), t(m, {
+                            class: "total-pot-row mt-10"
+                        }, {
+                            default: i(() => [t(n, {
+                                cols: "4"
+                            }, {
+                                default: i(() => s[0] || (s[0] = [w(" Going Bets: ")])),
+                                _: 1
+                            }), t(n, {
+                                cols: "8"
+                            }, {
+                                default: i(() => [e("span", ee, "$" + l(this.game.currentGoingBet), 1)]),
+                                _: 1
+                            })]),
+                            _: 1
+                        }), t(m, {
+                            class: "total-pot-row mt-1"
+                        }, {
+                            default: i(() => [t(n, {
+                                cols: "4"
+                            }, {
+                                default: i(() => s[1] || (s[1] = [w(" Pot: ")])),
+                                _: 1
+                            }), t(n, {
+                                cols: "8"
+                            }, {
+                                default: i(() => [e("span", te, "$" + l(this.game.bettingPool), 1)]),
+                                _: 1
+                            })]),
+                            _: 1
+                        })]),
                         _: 1
                     })]),
                     _: 1
@@ -407,7 +432,17 @@ function ge(a, s, f, c, r, o) {
             class: "px-5"
         }, {
             default: i(() => [t(n, null, {
-                default: i(() => [this.winScenario.thisPlayersWinningHand ? p("", !0) : (h(), g("div", ie, [e("h3", { class: "win-title text-red-accent-3" }, "LOSE"), e("div", ne, l(((this.game.players.find(u => u.netId === this.winScenario.winningHand.playerNetId) || {}).name) + " won $" + this.game.bettingPool), 1), e("div", oe, l(this.describeHand(this.winScenario.winningHand)), 1)])), this.winScenario.isTrueTie == !1 && this.winScenario.thisPlayersWinningHand ? (h(), g("div", re, [e("h3", { class: "win-title text-green-accent-3" }, "WIN"), e("div", ne, l(((this.game.players.find(u => u.netId === this.winScenario.winningHand.playerNetId) || {}).name) + " won $" + this.game.bettingPool), 1), e("div", oe, l(this.describeHand(this.winScenario.winningHand)), 1)])) : p("", !0), this.winScenario.isTrueTie == !0 && this.winScenario.thisPlayersWinningHand ? (h(), g("div", le, [e("h3", { class: "win-title text-green-lighten-2" }, "WIN"), e("div", ce, l("Tie: " + this.winScenario.tiedHands.length + " winners, each won $" + (this.game.bettingPool / this.winScenario.tiedHands.length)), 1), e("div", ue, l(this.describeHand(this.winScenario.tiedHands && this.winScenario.tiedHands[0])), 1)])) : p("", !0)]),
+                default: i(() => [this.winScenario.thisPlayersWinningHand ? p("", !0) : (h(), g("div", ie, s[2] || (s[2] = [e("h3", {
+                    class: "win-title text-red-accent-3"
+                }, "LOST", -1), e("div", {
+                    class: "win-message"
+                }, "You lost this time.", -1)]))), this.winScenario.isTrueTie == !1 && this.winScenario.thisPlayersWinningHand ? (h(), g("div", re, [s[5] || (s[5] = e("h3", {
+                    class: "win-title text-green-accent-3"
+                }, "WINNER!", -1)), s[6] || (s[6] = e("div", {
+                    class: "win-message"
+                }, "You are the sole winner of this game with a hand of:", -1)), e("div", ne, l(this.winScenario.thisPlayersWinningHand.winningHandType), 1), e("div", oe, [s[3] || (s[3] = w("You win the entire pool of ")), e("span", de, "$" + l(this.game.bettingPool), 1), s[4] || (s[4] = w("!"))])])) : p("", !0), this.winScenario.isTrueTie == !0 && this.winScenario.thisPlayersWinningHand ? (h(), g("div", le, [s[8] || (s[8] = e("h3", {
+                    class: "win-title text-green-lighten-2"
+                }, "TIED WINNER!", -1)), e("div", ce, "You are one of " + l(this.winScenario.tiedHands.length) + " winners of this game with a hand of:", 1), e("div", ue, l(this.winScenario.thisPlayersWinningHand.winningHandType), 1), e("div", he, [w("You win 1/" + l(this.winScenario.tiedHands.length) + " of the pool: ", 1), e("span", me, "$" + l(this.game.bettingPool / this.winScenario.tiedHands.length), 1), s[7] || (s[7] = w("!"))])])) : p("", !0)]),
                 _: 1
             })]),
             _: 1

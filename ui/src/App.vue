@@ -19,6 +19,10 @@ export default {
       game: undefined,
       thisPlayer: undefined,
       winScenario: undefined,
+      showBlindsModal: false,
+      blindsMin: 1,
+      blindsMax: 1000,
+      blindInput: 5,
     }
   },
   mounted() {
@@ -36,6 +40,12 @@ export default {
   },
   methods: {
     async onMessage(event) {
+      if (event.data.type === 'openBlindsModal') {
+        this.blindsMin = Number(event.data.min || 1)
+        this.blindsMax = Number(event.data.max || 1000)
+        this.blindInput = Number(event.data.defaultBlind || 5)
+        this.showBlindsModal = true
+      }
       if (event.data.type === 'start') {
         this.viewPokerGame = true;
         this.game = event.data.game;
@@ -97,6 +107,17 @@ export default {
         body: JSON.stringify(opts)
       })
     },
+    confirmBlinds() {
+      const v = Number(this.blindInput)
+      if (!isNaN(v) && v >= this.blindsMin && v <= this.blindsMax) {
+        this.showBlindsModal = false
+        this.fireEvent('blindsSelected', { blind: v })
+      }
+    },
+    cancelBlinds() {
+      this.showBlindsModal = false
+      this.fireEvent('cancelBlinds')
+    },
     translateCardToPng(isRevealed, royalty, suit){
       if (isRevealed) {
 
@@ -116,9 +137,11 @@ export default {
             break
         }
 
-        return '/ui/dist/img/card/'+fullSuit+'_'+royalty.toLowerCase()+'.png'
+        let r = royalty.toLowerCase()
+        if (r === '10') r = 't'
+        return '/ui/public/img/card/'+fullSuit+'_'+r+'.png'
       }
-      return '/ui/dist/img/card/back.png'
+      return '/ui/public/img/card/back.png'
     },
     getThisRoundsActionFromPlayer(player){
       // console.log('getThisRoundsActionFromPlayer', player.actionFlop, this.game.step)
@@ -151,6 +174,20 @@ export default {
   </header>
 
   <main>
+
+    <v-dialog v-model="showBlindsModal" width="420" persistent>
+      <v-card>
+        <v-card-title>Set Blinds</v-card-title>
+        <v-card-text>
+          <v-text-field type="number" label="Blind Amount ($)" v-model.number="blindInput" :min="blindsMin" :max="blindsMax" hide-details></v-text-field>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" @click="cancelBlinds">Cancel</v-btn>
+          <v-btn color="primary" @click="confirmBlinds">Confirm</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- POKER -->
 
@@ -217,33 +254,27 @@ export default {
                     <v-row v-for="player in this.game.players" class="player mb-1">
                       <v-col cols="12" class="pa-0">
                         <v-container class="pb-0">
-                          <div v-if="this.game.step == 'SHOWDOWN'">
-                            <v-row class="player-cards">
-                              <v-col cols="12" class="pa-0">
-                                <div class="d-flex pl-3">
-                                  <div class="card player-card">
-                                    <v-img :src="this.translateCardToPng(player.cardA.isRevealed, player.cardA.royalty, player.cardA.suit)" width="32" />
-                                  </div>
-                                  <div class="card player-card">
-                                    <v-img :src="this.translateCardToPng(player.cardB.isRevealed, player.cardB.royalty, player.cardB.suit)" width="32" />
-                                  </div>
+                          <v-row class="player-data ma-0 pa-0">
+                            <v-col cols="2" class="player-data-item pl-3 pb-1">
+                              <div class="d-flex">
+                                <div class="card player-card">
+                                  <v-img :src="this.translateCardToPng(player.cardA.isRevealed, player.cardA.royalty, player.cardA.suit)" width="28" />
                                 </div>
-                              </v-col>
-                            </v-row>
-                          </div>
-                          <!-- <v-sheet> -->
-                            <v-row class="player-data ma-0 pa-0">
-                              <v-col cols="4" class="player-data-item pl-0 pb-1"><span class="text-lime player-name">{{ player.name }}</span></v-col>
-                              <v-col cols="3" class="player-data-item pb-0"><span>{{ getThisRoundsActionFromPlayer(player) }}</span></v-col>
-                              <v-col cols="2" class="player-data-item pb-0"><span class="text-amber-lighten-3">${{ player.amountBetInRound }}</span></v-col>
-                              <v-col cols="2" class="player-data-item pb-0"><span class="text-amber">${{ player.totalAmountBetInGame }}</span></v-col>
-                              <v-col cols="1" class="player-data-item pb-0">
-                                <div>
-                                  <v-icon v-if="player.order == this.game.currentTurn" icon="mdi-arrow-left-bold-circle" size="x-small" class="text-light-blue pb-3 opacity-90"></v-icon>
+                                <div class="card player-card ml-1">
+                                  <v-img :src="this.translateCardToPng(player.cardB.isRevealed, player.cardB.royalty, player.cardB.suit)" width="28" />
                                 </div>
-                              </v-col>
-                            </v-row>
-                          <!-- </v-sheet> -->
+                              </div>
+                            </v-col>
+                            <v-col cols="3" class="player-data-item pl-0 pb-1"><span class="text-lime player-name">{{ player.name }}</span></v-col>
+                            <v-col cols="2" class="player-data-item pb-0"><span>{{ getThisRoundsActionFromPlayer(player) }}</span></v-col>
+                            <v-col cols="2" class="player-data-item pb-0"><span class="text-amber-lighten-3">${{ player.amountBetInRound }}</span></v-col>
+                            <v-col cols="2" class="player-data-item pb-0"><span class="text-amber">${{ player.totalAmountBetInGame }}</span></v-col>
+                            <v-col cols="1" class="player-data-item pb-0">
+                              <div>
+                                <v-icon v-if="player.order == this.game.currentTurn" icon="mdi-arrow-left-bold-circle" size="x-small" class="text-light-blue pb-3 opacity-90"></v-icon>
+                              </div>
+                            </v-col>
+                          </v-row>
                         </v-container>
                       </v-col>
                     </v-row>
