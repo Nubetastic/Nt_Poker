@@ -18,6 +18,7 @@ server_scripts {
 	"server/server.lua",
 	"server/sv_command.lua",
 	"server/proptest.lua",
+	"server/version_check.lua",
 	"@oxmysql/lib/MySQL.lua",
 }
 
