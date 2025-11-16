@@ -31,6 +31,7 @@ Game.bettingPool = 0
 Game.currentGoingBet = 0
 Game.roundsHighestBet = 0
 Game.sidePots = {}
+Game.propHostNetId = nil
 
 Game.turnTimer = nil
 Game.turnTimerWarned = false
@@ -62,6 +63,14 @@ end
 
 function Game:getBoard()
 	return self.board
+end
+
+function Game:getPropHostNetId()
+	return self.propHostNetId
+end
+
+function Game:setPropHostNetId(netId)
+	self.propHostNetId = netId
 end
 
 function Game:setBoard(board)
@@ -120,7 +129,7 @@ function Game:getAnte()
 end
 
 function Game:setAnte(ante)
-	self.ante = ante
+	self.ante = tonumber(ante) or 0
 end
 
 function Game:getBettingPool()
@@ -298,7 +307,11 @@ function Game:isEndOfRound()
         -- Not a subround (yet), so this is still a normal round
 
         -- Check if this is the last non-folded player (note: not just the last player)
-        if self:getCurrentTurn() >= self:findLastNonFoldedPlayerOrder() then
+        local lastNonFoldedOrder = self:findLastNonFoldedPlayerOrder()
+        if not lastNonFoldedOrder then
+            return true
+        end
+        if self:getCurrentTurn() >= lastNonFoldedOrder then
 
             if Config.DebugPrint then print("Game:isEndOfRound() - this is last non-folded player") end
 
@@ -749,7 +762,7 @@ function Game:New(obj)
     })
     instance.locationIndex = obj.locationIndex
     instance.players = obj.players
-    instance.ante = obj.ante
+    instance.ante = tonumber(obj.ante) or 0
     instance.bettingPool = obj.bettingPool
 
     instance.deck = nil
@@ -761,5 +774,6 @@ function Game:New(obj)
     instance.sidePots = {}
     instance.turnTimer = nil
     instance.turnTimerWarned = false
+    instance.propHostNetId = obj.propHostNetId
     return instance
 end

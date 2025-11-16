@@ -8,6 +8,9 @@ Player.seatIndex = nil
 Player.cardA = nil
 Player.cardB = nil
 Player.isNpc = false
+Player.npcCash = 0
+Player.npcModel = nil
+Player.playerCash = 0
 
 Player.actionInitial = nil
 Player.actionFlop = nil
@@ -76,6 +79,30 @@ end
 
 function Player:setIsNpc(isNpc)
 	self.isNpc = isNpc
+end
+
+function Player:getNpcCash()
+	return self.npcCash or 0
+end
+
+function Player:setNpcCash(amount)
+	self.npcCash = tonumber(amount) or 0
+end
+
+function Player:getNpcModel()
+	return self.npcModel
+end
+
+function Player:setNpcModel(model)
+	self.npcModel = model
+end
+
+function Player:getPlayerCash()
+	return self.playerCash or 0
+end
+
+function Player:setPlayerCash(amount)
+	self.playerCash = tonumber(amount) or 0
 end
 
 function Player:getActionInitial()
@@ -184,5 +211,9 @@ function Player:New(obj)
 	instance.seatIndex = obj.seatIndex
 	instance.totalAmountBetInGame = obj.totalAmountBetInGame
 	instance.isAllIn = false
+	instance.isNpc = obj.isNpc or false
+	instance.npcCash = obj.npcCash or 0
+	instance.npcModel = obj.npcModel
+	instance.playerCash = obj.playerCash or 0
     return instance
 end

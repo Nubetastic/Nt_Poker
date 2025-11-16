@@ -34,7 +34,7 @@ function PendingGame:getAnte()
 end
 
 function PendingGame:setAnte(ante)
-	self.ante = ante
+	self.ante = tonumber(ante) or 0
 end
 
 --------
@@ -61,6 +61,6 @@ function PendingGame:New(obj)
     })
     instance.initiatorNetId = obj.initiatorNetId
 	instance.players = obj.players
-	instance.ante = obj.ante
+	instance.ante = tonumber(obj.ante) or 0
     return instance
 end
