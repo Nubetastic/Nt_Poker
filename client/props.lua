@@ -7,6 +7,7 @@ local tableHeading = 0.0
 local tableLower = 0.05
 local currentLocationId = nil
 local localHandObj = nil
+local isHostClient = false
 
 local function loadModel(model)
     local hash = GetHashKey(model)
@@ -100,14 +101,9 @@ function Props:Start(game, locationId, playerSeatOrder)
     clearTableObjs()
     clearPlayerChips()
     local cfg = ConfigProps and ConfigProps.Props or {}
-    local isHost = false
-    for _,p in pairs(game.players or {}) do
-        if (p.order == 1) and p.netId == GetPlayerServerId(PlayerId()) then
-            isHost = true
-            break
-        end
-    end
-    if isHost then
+    local isHost = game and game.propHostNetId and (game.propHostNetId == GetPlayerServerId(PlayerId()))
+    isHostClient = isHost and true or false
+    if isHostClient then
         local planeCfg = cfg.Plane or {}
         local planeModel = planeCfg.model or "p_pokercaddy02x"
         local planeOff = planeCfg.offset or {}
@@ -133,43 +129,73 @@ function Props:Update(game)
     if not game or not tablePos or not currentLocationId then return end
     local loc = Config.Locations[currentLocationId]
     if not loc or not loc.Chairs then return end
+
+    local hostNow = game and game.propHostNetId and (game.propHostNetId == GetPlayerServerId(PlayerId())) or false
+    if hostNow ~= isHostClient then
+        isHostClient = hostNow
+        if isHostClient then
+            local cfg0 = ConfigProps and ConfigProps.Props or {}
+            local planeCfg = cfg0.Plane or {}
+            local planeModel = planeCfg.model or "p_pokercaddy02x"
+            local planeOff = planeCfg.offset or {}
+            local planePos = worldFrom(tablePos, tableHeading, planeOff.x or 0.5, planeOff.y or -0.15, (planeOff.z or 0.88) - tableLower)
+            local planeHeading = tableHeading + (planeOff.h or 0.0)
+            spawnAndStore(planeModel, planePos, planeHeading)
+            local deckCfg = cfg0.Deck or {}
+            local deckModel = deckCfg.model or "p_cards01x"
+            local deckOff = deckCfg.offset or {}
+            local deckPos = worldFrom(tablePos, tableHeading, deckOff.x or 0.18, deckOff.y or -0.18, (deckOff.z or 0.93) - tableLower)
+            spawnAndStore(deckModel, deckPos, tableHeading)
+            local potCfg = cfg0.Pot or {}
+            local potModel = potCfg.model or "p_pokerchipavarage01x"
+            local potOff = potCfg.offset or {}
+            local potPos = worldFrom(tablePos, tableHeading, potOff.x or 0.0, potOff.y or 0.0, (potOff.z or 0.93) - tableLower)
+            spawnAndStore(potModel, potPos, tableHeading)
+        else
+            clearTableObjs()
+        end
+    end
+
     local cfg = ConfigProps and ConfigProps.Props or {}
     local chipsCfg = cfg.PlayerChips or {}
     local chipsModelCfg = chipsCfg.model or "p_pokerchipavarage02x"
     local chipsOff = chipsCfg.offset or {}
     local r = chipsOff.r or 1.0
     local zOff = chipsOff.z or 0.93
+    local degOff = chipsOff.deg or 0.0
     local present = {}
     for _,p in pairs(game.players or {}) do
-        if p.netId == GetPlayerServerId(PlayerId()) then
-            local order = p.seatIndex or p.order
-            local chair = loc.Chairs and loc.Chairs[order]
-            if chair and chair.Coords then
-                local chairPos = vector3(chair.Coords.x, chair.Coords.y, chair.Coords.z)
-                local dirX = chairPos.x - tablePos.x
-                local dirY = chairPos.y - tablePos.y
-                local len = math.sqrt(dirX*dirX + dirY*dirY)
-                if len < 0.001 then len = 1.0 end
-                dirX = dirX / len
-                dirY = dirY / len
-                local chipsX = tablePos.x + dirX * r
-                local chipsY = tablePos.y + dirY * r
-                local pos = vector3(chipsX, chipsY, tablePos.z + (zOff - tableLower))
-                if not playerChips[order] or not DoesEntityExist(playerChips[order]) then
-                    local chipsModel = chipsModelCfg
-                    if type(chipsModelCfg) == 'table' and #chipsModelCfg > 0 then
-                        chipsModel = chipsModelCfg[math.random(1, #chipsModelCfg)]
-                    end
-                    local heading = math.random() * 360.0
-                    playerChips[order] = createLocalObject(chipsModel, pos, heading)
-                else
-                    FreezeEntityPosition(playerChips[order], false)
-                    SetEntityCoords(playerChips[order], pos.x, pos.y, pos.z, false, false, false, true)
-                    FreezeEntityPosition(playerChips[order], true)
+        local order = p.seatIndex or p.order
+        local chair = loc.Chairs and loc.Chairs[order]
+        if chair and chair.Coords then
+            local chairPos = vector3(chair.Coords.x, chair.Coords.y, chair.Coords.z)
+            local dirX = chairPos.x - tablePos.x
+            local dirY = chairPos.y - tablePos.y
+            local len = math.sqrt(dirX*dirX + dirY*dirY)
+            if len < 0.001 then len = 1.0 end
+            dirX = dirX / len
+            dirY = dirY / len
+            local rad = math.rad(degOff)
+            local cosA = math.cos(rad)
+            local sinA = math.sin(rad)
+            local rotX = dirX * cosA - dirY * sinA
+            local rotY = dirX * sinA + dirY * cosA
+            local chipsX = tablePos.x + rotX * r
+            local chipsY = tablePos.y + rotY * r
+            local pos = vector3(chipsX, chipsY, tablePos.z + (zOff - tableLower))
+            if not playerChips[order] or not DoesEntityExist(playerChips[order]) then
+                local chipsModel = chipsModelCfg
+                if type(chipsModelCfg) == 'table' and #chipsModelCfg > 0 then
+                    chipsModel = chipsModelCfg[math.random(1, #chipsModelCfg)]
                 end
-                present[order] = true
+                local heading = math.random() * 360.0
+                playerChips[order] = createLocalObject(chipsModel, pos, heading)
+            else
+                FreezeEntityPosition(playerChips[order], false)
+                SetEntityCoords(playerChips[order], pos.x, pos.y, pos.z, false, false, false, true)
+                FreezeEntityPosition(playerChips[order], true)
             end
-            break
+            present[order] = true
         end
     end
     for order,obj in pairs(playerChips) do
@@ -212,6 +238,7 @@ function Props:CleanupAll()
     clearLocalHandObj()
     tablePos = nil
     currentLocationId = nil
+    isHostClient = false
 end
 
 function Props:DebugSpawnCandidates()

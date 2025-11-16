@@ -9,7 +9,7 @@ ConfigProps.Props = {
         offset = { x = 0.3, y = 0.2, z = 0.86 },
     },
     Pot = {
-        model = "p_pokerchipwinningstack01x",
+        model = "p_pokerchipante01x",
         offset = { x = -0.1, y = 0.0, z = 0.853 },
     },
     Plane = { -- chip holder.
@@ -22,6 +22,6 @@ ConfigProps.Props = {
             "p_pokerchipavarage02x",
             "p_pokerchipavarage03x",
         },
-        offset = { r = .5, z = 0.853 }, -- r is radius from center of table to player.
+        offset = { r = .65, deg = 25, z = 0.853 }, -- r is radius from center of table to player.
     },
 }

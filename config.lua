@@ -9,23 +9,26 @@ Config.DebugOptions = {
     SkipStartGameOptions = false,
 }
 
+Config.Framework = "RSG" -- Supported: RSG, Vorp
+
+Config.TableDistance = 2.6
+Config.TurnTimeoutInSeconds = 2 * 60
+Config.TurnTimeoutWarningInSeconds = 20
+Config.BetweenRoundWait = 15000 -- Time to wait between rounds in ms
+
 Config.Keys = {
     ActionCall = "INPUT_FRONTEND_RB", -- E
     ActionRaise = "INPUT_CONTEXT_X", -- R
     ActionCheck = "INPUT_FRONTEND_RS", -- X
     ActionFold = "INPUT_CONTEXT_B", -- F
-    SubactionCycleAmount = "INPUT_FRONTEND_UP", -- UP
+    IncreaseRaise = "INPUT_FRONTEND_UP", -- UP
+    DecreaseRaise = "INPUT_FRONTEND_DOWN", -- DOWN
     StartGame = "INPUT_CONTEXT_A", -- SPACE
     JoinGame = "INPUT_CONTEXT_X", -- R
     BeginGame = "INPUT_CREATOR_ACCEPT", -- ENTER
     CancelGame = "INPUT_FRONTEND_RS", -- X
-    LeaveGame = "INPUT_FRONTEND_DOWN", -- DOWN
+    LeaveGame = "INPUT_CONTEXT_A", -- SPACE
     AddNpc = "INPUT_INTERACT_LOCKON_POS", -- G (default)
-}
-
-Config.NpcCash = {
-    Min = 100,
-    Max = 500,
 }
 
 Config.Locations = {
@@ -52,55 +55,6 @@ Config.Locations = {
             },
             [6] = {
                 Coords = vector4(-304.85144042969, 802.27276611328, 118.48006439209, 193.3058052063),
-            },
-        }
-    },
-    ["ValentineStorage"] = {
-        Table = {
-            Coords = vector3(-233.16720581054688, 759.6881103515625, 116.8306884765625)
-        },
-        MaxPlayers = 6,
-        Chairs = {
-            [1] = {
-                Coords = vector4(-231.78, 759.86, 117.25, 88.92),
-            },
-            [2] = {
-                Coords = vector4(-232.57, 758.6, 117.25, 32.92),
-            },
-            [3] = {
-                Coords = vector4(-234.02, 758.94, 117.22, 311.92),
-            },
-            [4] = {
-                Coords = vector4(-234.58, 760.28, 117.24, 252.92),
-            },
-            [5] = {
-                Coords = vector4(-233.61, 761.15, 117.22, 198.92),
-            },
-            [6] = {
-                vector4(-232.36, 760.97, 117.24, 148.92),
-            },
-        }
-    },
-    ["Armadillo"] = {
-        Table = {
-            Coords = vector3(-3619.4072265625, -2610.88037109375, -11.71362113952636)
-        },
-        MaxPlayers = 5,
-        Chairs = {
-            [1] = {
-                Coords = vector4(-3618.25, -2611.19, -11.24, 81.44),
-            },
-            [2] = {
-                Coords = vector4(-3619.37, -2612.11, -11.23, 357.36),
-            },
-            [3] = {
-                Coords = vector4(-3620.66, -2611.15, -11.23, 277.27),
-            },
-            [4] = {
-                Coords = vector4(-3620.06, -2609.65, -11.23, 204.4),
-            },
-            [5] = {
-                Coords = vector4(-3618.65, -2609.95, -11.23, 149.14),
             },
         }
     },
@@ -156,208 +110,6 @@ Config.Locations = {
             },
         }
     },
-    ["Colter"] = {
-        Table = {
-            Coords = vector3(-1348.92, 2440.14, 309.19)
-        },
-        MaxPlayers = 6,
-        Chairs = {
-            [1] = {
-                Coords = vector4(-1349.11, 2438.9, 307.9, 345.0),
-            },
-            [2] = {
-                Coords = vector4(-1349.95, 2439.72, 307.9, 285.0),
-            },
-            [3] = {
-                Coords = vector4(-1349.65, 2440.87, 307.9, 225.0),
-            },
-            [4] = {
-                Coords = vector4(-1348.52, 2441.18, 307.9, 165.0),
-            },
-            [5] = {
-                Coords = vector4(-1347.67, 2440.35, 307.9, 105.0),
-            },
-            [6] = {
-                Coords = vector4(-1347.97, 2439.21, 307.9, 45.0),
-            },
-        }
-    },
-    ["Emerald"] = {
-        Table = {
-            Coords = vector3(1450.4486083984375, 378.16632080078125, 88.83031463623047)
-        },
-        MaxPlayers = 4,
-        Chairs = {
-            [1] = {
-                Coords = vector4(1449.1217041016, 378.19815063477, 89.338119506836, 255.91299438477),
-            },
-            [2] = {
-                Coords = vector4(1449.8660888672, 378.98043823242, 89.343681335449, 203.84995079041),
-            },
-            [3] = {
-                Coords = vector4(1450.8999023438, 379.05187988281, 89.343414306641, 523.28308105469),
-            },
-            [4] = {
-                Coords = vector4(1451.6976318359, 378.34112548828, 89.348678588867, 474.08618164062),
-            },
-        }
-    },
-    ["KorriganL"] = {
-        Table = {
-            Coords = vector3(2874.1787109375, -1404.4053955078125, 42.45375061035156)
-        },
-        MaxPlayers = 6,
-        Chairs = {
-            [1] = {
-                Coords = vector4(2873.31, -1403.71, 42.9, 231.86),
-            },
-            [2] = {
-                Coords = vector4(2874.39, -1403.31, 42.89, 168.36),
-            },
-            [3] = {
-                Coords = vector4(2875.31, -1404.03, 42.89, 110.36),
-            },
-            [4] = {
-                Coords = vector4(2874.98, -1405.09, 42.9, 50.86),
-            },
-            [5] = {
-                Coords = vector4(2873.99, -1405.49, 42.9, 349.86),
-            },
-            [6] = {
-                Coords = vector4(2873.14, -1404.78, 42.91, 287.86),
-            },
-        }
-    },
-    ["KorriganC"] = {
-        Table = {
-            Coords = vector3(2870.537353515625, -1403.39306640625, 42.48088073730469)
-        },
-        MaxPlayers = 6,
-        Chairs = {
-            [1] = {
-                Coords = vector4(2869.67, -1402.67, 42.93, 231.86),
-            },
-            [2] = {
-                Coords = vector4(2870.75, -1402.27, 42.92, 168.36),
-            },
-            [3] = {
-                Coords = vector4(2871.58, -1402.97, 42.91, 110.36),
-            },
-            [4] = {
-                Coords = vector4(2871.4, -1404.08, 42.92, 50.86),
-            },
-            [5] = {
-                Coords = vector4(2870.36, -1404.46, 42.91, 349.86),
-            },
-            [6] = {
-                Coords = vector4(2869.48, -1403.78, 42.92, 292.36),
-            },
-        }
-    },
-    ["KorriganR"] = {
-        Table = {
-            Coords = vector3(2872.223388671875, -1406.71630859375, 42.45403671264648)
-        },
-        MaxPlayers = 6,
-        Chairs = {
-            [1] = {
-                Coords = vector4(2871.42, -1406.03, 42.9, 229.36),
-            },
-            [2] = {
-                Coords = vector4(2872.43, -1405.64, 42.9, 168.36),
-            },
-            [3] = {
-                Coords = vector4(2873.25, -1406.32, 42.9, 110.36),
-            },
-            [4] = {
-                Coords = vector4(2873.06, -1407.4, 42.89, 50.86),
-            },
-            [5] = {
-                Coords = vector4(2872.04, -1407.9, 42.89, 349.86),
-            },
-            [6] = {
-                Coords = vector4(2872.04, -1407.9, 42.89, 349.86),
-            },
-        }
-    },
-    ["Limpany"] = {
-        Table = {
-            Coords = vector3(-363.32, -117.83, 51.99)
-        },
-        MaxPlayers = 6,
-        Chairs = {
-            [1] = {
-                Coords = vector4(-362.22, -118.33, 50.75, 77.12),
-            },
-            [2] = {
-                Coords = vector4(-363.05, -119.23, 50.75, 17.12),
-            },
-            [3] = {
-                Coords = vector4(-364.25, -118.96, 50.75, 317.12),
-            },
-            [4] = {
-                Coords = vector4(-364.62, -117.78, 50.75, 257.12),
-            },
-            [5] = {
-                Coords = vector4(-363.78, -116.88, 50.75, 197.12),
-            },
-            [6] = {
-                Coords = vector4(-362.59, -117.16, 50.75, 137.12),
-            },
-        }
-    },
-    ["Rhodes"] = {
-        Table = {
-            Coords = vector3(1436.75, -1370.54, 84.71)
-        },
-        MaxPlayers = 6,
-        Chairs = {
-            [1] = {
-                Coords = vector4(1435.87, -1369.64, 84.71, 215.2),
-            },
-            [2] = {
-                Coords = vector4(1437.01, -1369.53, 84.71, 155.2),
-            },
-            [3] = {
-                Coords = vector4(1437.68, -1370.48, 84.71, 95.2),
-            },
-            [4] = {
-                Coords = vector4(1437.22, -1371.5, 84.71, 35.2),
-            },
-            [5] = {
-                Coords = vector4(1436.07, -1371.64, 84.71, 335.2),
-            },
-            [6] = {
-                Coords = vector4(1435.4, -1370.69, 84.71, 275.2),
-            },
-        }
-    },
-    ["Strawberry"] = {
-        Table = {
-            Coords = vector3(-1779.7, -369.39, 160.74)
-        },
-        MaxPlayers = 6,
-        Chairs = {
-            [1] = {
-                Coords = vector4(-1780.25, -370.27, 159.44, 313.15),
-            },
-            [2] = {
-                Coords = vector4(-1780.55, -369.38, 159.44, 258.9),
-            },
-            [3] = {
-                Coords = vector4(-1780.12, -368.69, 159.44, 202.46),
-            },
-            [4] = {
-                Coords = vector4(-1779.17, -368.76, 159.44, 152.04),
-            },
-            [5] = {
-                Coords = vector4(-1778.63, -369.65, 159.44, 73.86),
-            },
-            [6] = {
-                Coords = vector4(-1779.35, -370.41, 159.44, 13.76),
-            },
-        }
-    },
     ["Tumbleweed"] = {
         Table = {
             Coords = vector3(-5510.39453125, -2913.763671875, 0.63532996177673)
@@ -384,25 +136,34 @@ Config.Locations = {
             },
         }
     },
+    ["SaintDenis_Backroom"] = {
+        Table = {
+            Coords = vector3(2717.64355469, -1285.60559082, 59.35139084)
+        },
+        MaxPlayers = 6,
+        Chairs = {
+            [1] = {
+                Coords = vector4(2718.37719727, -1284.56481934, 59.85137177, 144.81988525),
+            },
+            [2] = { 
+                Coords = vector4(2717.11108398, -1284.44995117, 59.85134888, 204.73828125),
+            },
+            [3] = {
+                Coords = vector4(2716.37255859, -1285.48706055, 59.85139465, 264.67211914),
+            },
+            [4] = {
+                Coords = vector4(2716.91040039, -1286.64672852, 59.85135651, 324.84735107),
+            },
+            [5] = {
+                Coords = vector4(2718.16870117, -1286.74353027, 59.85141754, 24.77279663),
+            },
+            [6] = {
+                Coords = vector4(2718.89746094, -1285.71374512, 59.85138702, 85.07020569),
+            },
+        },
+    },
 }
 
-Config.TableDistance = 2.6
-
-Config.TurnTimeoutInSeconds = 2 * 60
-Config.TurnTimeoutWarningInSeconds = 20
-
-Config.Audio = {
-    ChipDrop = "poker_chip_drop_1.ogg",
-    ChipTap = "poker_chip_tap_1.ogg",
-    CardsDeal = "poker_cards_deal5.ogg",
-    Win = "treasure.ogg",
-    Lose = "brass_fail.ogg",
-    TurnTimerWarn = "tick_tock.ogg",
-    CardFlip1 = "card_flip1.ogg",
-    CardFlip2 = "card_flip2.ogg",
-    CardFlip3 = "card_flip3.ogg",
-}
-Config.AudioVolume = 0.1
 
 Config.Animations = {
     HoldCards = {
@@ -538,6 +299,3 @@ Config.Animations = {
         },
     },
 }
-
--- Webhooks removed; keep this unset
--- Config.Webhook = nil

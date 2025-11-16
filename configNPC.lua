@@ -1,8 +1,12 @@
 ConfigNPC = {}
 
+ConfigNPC.NPCEnable = true -- Enable npc players at tables.
+
 ConfigNPC.Settings = {
     MaxPerTable = 3, -- max number of npc players at any table.
     NPCLeaveSeatFree = true, -- If there is an npc playing and less then 2 free seats then one npc at the table will leave between hands.
+    MaxFreeSeats = 1, -- If there are less then this number of free seats at a table an npc will leave between hands.
+    DecisionTime = math.random(30,120), -- time in seconds npc will take to make a decision.
 }
 
 ConfigNPC.NpcCash = {

@@ -107,11 +107,13 @@ local PromptCall
 local PromptRaise
 local PromptCheck
 local PromptFold
-local PromptCycleAmount
+local PromptIncreaseAmount
+local PromptDecreaseAmount
 local PromptStart
 local PromptJoin
 local PromptBegin
 local PromptCancel
+local PromptAddNpc
 local PromptLeave
 
 local characterName = false
@@ -197,6 +199,8 @@ CreateThread(function()
     end
 
 end)
+
+
 
 -- Join game prompts
 CreateThread(function()
@@ -322,31 +326,32 @@ CreateThread(function()
 
 end)
 
+
 -- Begin game prompt
 CreateThread(function()
 
     PromptGroupFinalize = NativeUtils.Prompts:SetupPromptGroup()
     PromptBegin = PromptGroupFinalize:RegisterPrompt("Begin Game", GetHashKey(Config.Keys.BeginGame), 1, 1, true, "hold", {timedeventhash = "MEDIUM_TIMED_EVENT"})
     PromptCancel = PromptGroupFinalize:RegisterPrompt("Cancel Game", GetHashKey(Config.Keys.CancelGame), 1, 1, true, "hold", {timedeventhash = "MEDIUM_TIMED_EVENT"})
+    PromptAddNpc = PromptGroupFinalize:RegisterPrompt("Add NPC", GetHashKey(Config.Keys.AddNpc), 1, 1, true, "click", {})
 
     while true do
 
         local sleep = 1000
 
-        -- default hidden each tick
         PromptBegin:TogglePrompt(false)
         PromptCancel:TogglePrompt(false)
+        PromptAddNpc:TogglePrompt(false)
 
         if not isInGame and nearTableLocationIndex and locations[nearTableLocationIndex] and playingPoker then
             sleep = 1
-
             local location = locations[nearTableLocationIndex]
 
             if location.state == LOCATION_STATES.PENDING_GAME and location.pendingGame.initiatorNetId == GetPlayerServerId(PlayerId()) then
 
-                -- show prompts while seated/pending
                 PromptBegin:TogglePrompt(true)
                 PromptCancel:TogglePrompt(true)
+                if ConfigNPC and ConfigNPC.NPCEnable then PromptAddNpc:TogglePrompt(true) end
 
                 PromptSetText(PromptBegin.Prompt, CreateVarString(10, "LITERAL_STRING", "Begin Game  |  Players: ~o~" .. #location.pendingGame.players .. " ", "Title"))
 
@@ -354,16 +359,17 @@ CreateThread(function()
 
                 PromptGroupFinalize:ShowGroup("Poker Table")
 
-                -- BEGIN (FINALIZED)
                 if PromptBegin:HasCompleted() then
                     TriggerServerEvent("rainbow_poker:Server:FinalizePendingGameAndBegin", nearTableLocationIndex)
                 end
 
-                -- CANCEL
                 if PromptCancel:HasCompleted() then
                     TriggerServerEvent("rainbow_poker:Server:CancelPendingGame", nearTableLocationIndex)
                 end
 
+                if (ConfigNPC and ConfigNPC.NPCEnable) and PromptAddNpc:HasCompleted() then
+                    TriggerServerEvent("rainbow_poker:Server:AddNpcToPendingGame", nearTableLocationIndex)
+                end
 
             end
         end
@@ -374,7 +380,6 @@ CreateThread(function()
 
 end)
 
-
 -- In-game prompts
 CreateThread(function()
 
@@ -383,16 +388,16 @@ CreateThread(function()
     PromptRaise = PromptGroupInGame:RegisterPrompt("Raise $1", GetHashKey(Config.Keys.ActionRaise), 1, 1, true, "click", {})
     PromptCheck = PromptGroupInGame:RegisterPrompt("Check", GetHashKey(Config.Keys.ActionCheck), 1, 1, true, "click", {})
     PromptFold = PromptGroupInGame:RegisterPrompt("Fold", GetHashKey(Config.Keys.ActionFold), 1, 1, true, "hold", {timedeventhash = "MEDIUM_TIMED_EVENT"})
-    PromptCycleAmount = PromptGroupInGame:RegisterPrompt("Change Amount", GetHashKey(Config.Keys.SubactionCycleAmount), 1, 1, true, "click", {})
+    PromptIncreaseAmount = PromptGroupInGame:RegisterPrompt("Increase", GetHashKey(Config.Keys.IncreaseRaise), 1, 1, true, "click", {})
+    PromptDecreaseAmount = PromptGroupInGame:RegisterPrompt("Decrease", GetHashKey(Config.Keys.DecreaseRaise), 1, 1, true, "click", {})
     
-    PromptGroupInGameLeave = NativeUtils.Prompts:SetupPromptGroup()
-    PromptLeave = PromptGroupInGameLeave:RegisterPrompt("Leave", GetHashKey(Config.Keys.LeaveGame), 1, 1, true, "hold", {timedeventhash = "MEDIUM_TIMED_EVENT"})
+    PromptLeave = PromptGroupInGame:RegisterPrompt("Leave", GetHashKey(Config.Keys.LeaveGame), 1, 1, true, "hold", {timedeventhash = "MEDIUM_TIMED_EVENT"})
 
     local wasMyTurn = false
 
     while true do
 
-        local sleep = 1000
+        local sleep = 2000
 
         if isInGame and game and game.step ~= ROUNDS.PENDING and game.step ~= ROUNDS.SHOWDOWN then
             sleep = 0
@@ -405,8 +410,10 @@ CreateThread(function()
             PromptSetEnabled(PromptCheck.Prompt, false)
             PromptFold:TogglePrompt(false)
             PromptSetEnabled(PromptFold.Prompt, false)
-            PromptCycleAmount:TogglePrompt(false)
-            PromptSetEnabled(PromptCycleAmount.Prompt, false)
+            PromptIncreaseAmount:TogglePrompt(false)
+            PromptSetEnabled(PromptIncreaseAmount.Prompt, false)
+            PromptDecreaseAmount:TogglePrompt(false)
+            PromptSetEnabled(PromptDecreaseAmount.Prompt, false)
 
 
             -- Block inputs
@@ -415,7 +422,8 @@ CreateThread(function()
             EnableControlAction(0, GetHashKey(Config.Keys.ActionRaise))
             EnableControlAction(0, GetHashKey(Config.Keys.ActionCheck))
             EnableControlAction(0, GetHashKey(Config.Keys.ActionFold))
-            EnableControlAction(0, GetHashKey(Config.Keys.SubactionCycleAmount))
+            EnableControlAction(0, GetHashKey(Config.Keys.IncreaseRaise))
+            EnableControlAction(0, GetHashKey(Config.Keys.DecreaseRaise))
             EnableControlAction(0, GetHashKey(Config.Keys.LeaveGame))
             EnableControlAction(0, 0x4BC9DABB, true) -- Enable push-to-talk
 			EnableControlAction(0, 0xF3830D8E, true) -- Enable J for jugular
@@ -426,6 +434,17 @@ CreateThread(function()
             EnableControlAction(0, `INPUT_CREATOR_RT`, true) -- PAGE DOWN
 
 
+            -- Always show Leave prompt
+            PromptSetEnabled(PromptLeave.Prompt, true)
+            PromptLeave:TogglePrompt(true)
+            PromptGroupInGame:ShowGroup("Poker Game")
+
+            if PromptLeave:HasCompleted() then
+                if Config.DebugPrint then print("PromptLeave") end
+                TriggerServerEvent("rainbow_poker:Server:PlayerLeave")
+                Wait(1000)
+            end
+
             -- Check if it's their turn
             local thisPlayer = findThisPlayerFromGameTable(game)
 
@@ -435,7 +454,7 @@ CreateThread(function()
 
             local myTurn = (game.currentTurn == thisPlayer.order) and (not thisPlayer.hasFolded)
 
-            if myTurn and not wasMyTurn then Wait(1000) end
+            if myTurn and not wasMyTurn then Wait(2000) end
 
             if myTurn then
                 local canEnable = GetGameTimer() >= revealHoldUntil
@@ -448,8 +467,8 @@ CreateThread(function()
                     PromptSetEnabled(PromptCheck.Prompt, false)
                     PromptFold:TogglePrompt(false)
                     PromptSetEnabled(PromptFold.Prompt, false)
-                    PromptCycleAmount:TogglePrompt(false)
-                    PromptSetEnabled(PromptCycleAmount.Prompt, false)
+                    PromptIncreaseAmount:TogglePrompt(false)
+                    PromptSetEnabled(PromptIncreaseAmount.Prompt, false)
                     promptsActive = false
                 end
 
@@ -477,8 +496,10 @@ CreateThread(function()
                         PromptSetEnabled(PromptRaise.Prompt, true)
                         PromptFold:TogglePrompt(true)
                         PromptSetEnabled(PromptFold.Prompt, true)
-                        PromptCycleAmount:TogglePrompt(true)
-                        PromptSetEnabled(PromptCycleAmount.Prompt, true)
+                        PromptIncreaseAmount:TogglePrompt(true)
+                        PromptSetEnabled(PromptIncreaseAmount.Prompt, true)
+                        PromptDecreaseAmount:TogglePrompt(true)
+                        PromptSetEnabled(PromptDecreaseAmount.Prompt, true)
 
                         PromptGroupInGame:ShowGroup("Poker Game")
                     end
@@ -488,7 +509,6 @@ CreateThread(function()
                         if Config.DebugPrint then print("PromptCall") end
 
                         TriggerServerEvent("rainbow_poker:Server:PlayerActionCall")
-                        TriggerEvent('poker:playAudio', Config.Audio.ChipDrop)
 
                         PlayAnimation("Bet")
                     end
@@ -497,7 +517,6 @@ CreateThread(function()
                         if Config.DebugPrint then print("PromptRaise") end
 
                         TriggerServerEvent("rainbow_poker:Server:PlayerActionRaise", turnRaiseAmount)
-                        TriggerEvent('poker:playAudio', Config.Audio.ChipDrop)
 
                         PlayAnimation("Bet")
                     end
@@ -521,16 +540,24 @@ CreateThread(function()
                         PlayAnimation("NoCards")
                     end
 
-                    if PromptCycleAmount:HasCompleted() then
-                        if Config.DebugPrint then print("PromptCycleAmount") end
-
-                        if turnRaiseAmount >= turnBaseRaiseAmount * 5 then
-                            turnRaiseAmount = turnBaseRaiseAmount
-                        else
-                            turnRaiseAmount = turnRaiseAmount + turnBaseRaiseAmount
+                    if PromptIncreaseAmount:HasCompleted() then
+                        if Config.DebugPrint then print("IncreaseRaise") end
+                        local outstanding = math.max(0, (game.roundsHighestBet or 0) - (thisPlayer.amountBetInRound or 0))
+                        local cash = (thisPlayer.playerCash or 0)
+                        local maxRaise = math.max(0, cash - outstanding)
+                        if maxRaise >= turnBaseRaiseAmount then
+                            local maxStep = maxRaise - (maxRaise % turnBaseRaiseAmount)
+                            if turnRaiseAmount < maxStep then
+                                turnRaiseAmount = math.min(maxStep, turnRaiseAmount + turnBaseRaiseAmount)
+                            end
                         end
+                    end
 
-                        TriggerEvent('poker:playAudio', Config.Audio.ChipTap)
+                    if PromptDecreaseAmount:HasCompleted() then
+                        if Config.DebugPrint then print("DecreaseRaise") end
+                        if turnRaiseAmount > turnBaseRaiseAmount then
+                            turnRaiseAmount = math.max(turnBaseRaiseAmount, turnRaiseAmount - turnBaseRaiseAmount)
+                        end
                     end
                 
                 end
@@ -546,14 +573,14 @@ CreateThread(function()
                     PromptSetEnabled(PromptLeave.Prompt, true)
                     PromptLeave:TogglePrompt(true)
 
-                    PromptGroupInGameLeave:ShowGroup("Poker Game")
+                    PromptGroupInGame:ShowGroup("Poker Game")
 
                     if PromptLeave:HasCompleted() then
                         if Config.DebugPrint then print("PromptLeave") end
 
                         TriggerServerEvent("rainbow_poker:Server:PlayerLeave")
 
-                        Wait(1000)
+                        Wait(2000)
                     end
                 end
 
@@ -564,19 +591,30 @@ CreateThread(function()
         elseif isInGame and game and game.step == ROUNDS.SHOWDOWN then
 
             sleep = 0
-
+            PromptCall:TogglePrompt(false)
+            PromptSetEnabled(PromptCall.Prompt, false)
+            PromptRaise:TogglePrompt(false)
+            PromptSetEnabled(PromptRaise.Prompt, false)
+            PromptCheck:TogglePrompt(false)
+            PromptSetEnabled(PromptCheck.Prompt, false)
+            PromptFold:TogglePrompt(false)
+            PromptSetEnabled(PromptFold.Prompt, false)
+            PromptIncreaseAmount:TogglePrompt(false)
+            PromptSetEnabled(PromptIncreaseAmount.Prompt, false)
+            PromptDecreaseAmount:TogglePrompt(false)
+            PromptSetEnabled(PromptDecreaseAmount.Prompt, false)
             -- Enable the "Leave" prompt
             PromptSetEnabled(PromptLeave.Prompt, true)
             PromptLeave:TogglePrompt(true)
 
-            PromptGroupInGameLeave:ShowGroup("Poker Game")
+            PromptGroupInGame:ShowGroup("Poker Game")
 
             if PromptLeave:HasCompleted() then
                 if Config.DebugPrint then print("PromptLeave") end
 
                 TriggerServerEvent("rainbow_poker:Server:PlayerLeave")
 
-                Wait(1000)
+                Wait(2000)
             end
 
         end
@@ -585,6 +623,8 @@ CreateThread(function()
         
     end
 end)
+
+
 
 
 -- Check for deaths (or other hard-occupying things)
@@ -677,13 +717,13 @@ AddEventHandler("rainbow_poker:Client:StartGame", function(_game, playerSeatOrde
     local locationId = locations[nearTableLocationIndex].id
     startChairScenario(locationId, playerSeatOrder)
 
-    TriggerEvent('poker:playAudio', Config.Audio.CardsDeal)
    
     PlayAnimation("HoldCards")
 
     if Props and locations and nearTableLocationIndex and locations[nearTableLocationIndex] then
         local locationId = locations[nearTableLocationIndex].id
         Props:Start(game, locationId, playerSeatOrder)
+        if NPCVisuals then NPCVisuals:Start(game, locationId) end
     end
 end)
 
@@ -707,6 +747,9 @@ AddEventHandler("rainbow_poker:Client:TriggerUpdate", function(_game)
 
     if Props then
         Props:Update(game)
+    end
+    if NPCVisuals then
+        NPCVisuals:Update(game)
     end
 
     local prevStep = lastStep
@@ -735,6 +778,9 @@ AddEventHandler("rainbow_poker:Client:ReturnPlayerLeave", function(locationIndex
     if Props then
         Props:CleanupAll()
     end
+    if NPCVisuals then
+        NPCVisuals:CleanupAll()
+    end
 
 end)
 
@@ -747,7 +793,6 @@ AddEventHandler("rainbow_poker:Client:WarnTurnTimer", function(locationIndex, pl
 
     NotifyRightTip(string.format("WARNING: Take action now. Less than %d seconds remaining.", timeRemaining), 'warning', 6 * 1000)
 
-    TriggerEvent('poker:playAudio', Config.Audio.TurnTimerWarn)
 end)
 
 RegisterNetEvent("rainbow_poker:Client:AlertWin")
@@ -775,6 +820,9 @@ AddEventHandler("rainbow_poker:Client:CleanupFinishedGame", function()
 
     if Props then
         Props:CleanupAll()
+    end
+    if NPCVisuals then
+        NPCVisuals:CleanupAll()
     end
 
     game = nil
@@ -848,6 +896,18 @@ end
 function PlayBestIdleAnimation()
     if Config.DebugPrint then print("PlayBestIdleAnimation") end
 
+    -- Check if game exists before accessing it
+    if not game then
+        if Config.DebugPrint then print("PlayBestIdleAnimation - game is nil, skipping") end
+        return
+    end
+
+    -- Check if players table exists
+    if not game.players then
+        if Config.DebugPrint then print("PlayBestIdleAnimation - game.players is nil, skipping") end
+        return
+    end
+
     local player
     for k,v in pairs(game.players) do
         if v.netId == GetPlayerServerId(PlayerId()) then
@@ -861,7 +921,6 @@ function PlayBestIdleAnimation()
     else
         PlayAnimation("HoldCards")
     end
-
 end
 
 function startChairScenario(locationId, chairNumber)
@@ -919,6 +978,46 @@ AddEventHandler("onResourceStop", function(resourceName)
         if Props then
             Props:CleanupAll()
         end
+        if NPCVisuals then
+            NPCVisuals:CleanupAll()
+        end
     end
 
+end)
+
+
+AddEventHandler('playerDropped', function (reason)
+    if Config.DebugPrint then print("Player dropped, cleaning up poker game") end
+    
+    -- Clean up all game state
+    isInGame = false
+    game = nil
+    isNearTable = false
+    nearTableLocationIndex = nil
+    hasLeft = true
+    playingPoker = false
+    
+    -- Clean up UI
+    if UI then
+        UI:CloseAll()
+    end
+    
+    -- Clean up props
+    if Props then
+        Props:CleanupAll()
+    end
+    if NPCVisuals then
+        NPCVisuals:CleanupAll()
+    end
+    
+    -- Clear any active prompts
+    local prompts = {PromptCall, PromptRaise, PromptCheck, PromptFold, PromptIncreaseAmount, PromptStart, PromptJoin, PromptBegin, PromptCancel, PromptLeave}
+    for _, prompt in pairs(prompts) do
+        if prompt and prompt.TogglePrompt then
+            prompt:TogglePrompt(false)
+        end
+    end
+    
+    -- Clear ped tasks
+    clearPedTaskAndUnfreeze(false)
 end)

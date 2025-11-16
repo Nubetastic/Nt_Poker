@@ -1,4 +1,4 @@
-local RSGCore = exports['rsg-core']:GetCoreObject()
+
 
 local locations = {}
 
@@ -81,8 +81,7 @@ end)
 RegisterServerEvent("rainbow_poker:Server:RequestCharacterName", function()
 	local _source = source
 
-    local Player = RSGCore.Functions.GetPlayer(_source)
-    local firstname = (Player and Player.PlayerData and Player.PlayerData.charinfo and Player.PlayerData.charinfo.firstname) or GetPlayerName(_source)
+    local firstname = Framework.getName(_source) or GetPlayerName(_source)
     TriggerClientEvent("rainbow_poker:Client:ReturnRequestCharacterName", _source, firstname)
 end)
 
@@ -281,6 +280,72 @@ RegisterServerEvent("rainbow_poker:Server:JoinGame", function(playersChosenName,
     -- Discord logging removed
 end)
 
+-- Add an NPC to the pending game (initiator only)
+RegisterServerEvent("rainbow_poker:Server:AddNpcToPendingGame", function(tableLocationIndex)
+	local _source = source
+	local loc = locations[tableLocationIndex]
+	if not loc then return end
+	local pendingGame = loc:getPendingGame()
+	if not pendingGame then return end
+	if pendingGame:getInitiatorNetId() ~= _source then return end
+	if not (ConfigNPC and ConfigNPC.NPCEnable) then
+		TriggerClientEvent('poker:notify', _source, { description = 'NPCs are disabled.', type = 'error', duration = 4000 })
+		return
+	end
+	local npcsAtTable = 0
+	for _,p in pairs(pendingGame:getPlayers()) do
+		if p.getIsNpc and p:getIsNpc() then npcsAtTable = npcsAtTable + 1 end
+	end
+	if ConfigNPC and ConfigNPC.Settings and ConfigNPC.Settings.MaxPerTable and npcsAtTable >= ConfigNPC.Settings.MaxPerTable then
+		TriggerClientEvent('poker:notify', _source, { description = 'Max NPCs reached for this table.', type = 'error', duration = 4000 })
+		return
+	end
+	local taken = {}
+	for _,v in pairs(pendingGame:getPlayers()) do
+		if v.seatIndex then taken[v.seatIndex] = true end
+	end
+	local available = {}
+	for i=1, loc:getMaxPlayers() do
+		if not taken[i] then table.insert(available, i) end
+	end
+	if #available == 0 then
+		TriggerClientEvent('poker:notify', _source, { description = 'No seats available.', type = 'error', duration = 4000 })
+		return
+	end
+	local seatIndex = available[math.random(1, #available)]
+	local cashMin = (ConfigNPC and ConfigNPC.NpcCash and ConfigNPC.NpcCash.Min) or 50
+	local cashMax = (ConfigNPC and ConfigNPC.NpcCash and ConfigNPC.NpcCash.Max) or 500
+	local npcCash = math.random(cashMin, cashMax)
+	local modelPool = (ConfigNPC and ConfigNPC.Models and (ConfigNPC.Models.Common or {})) or {}
+	if npcCash >= ((ConfigNPC and ConfigNPC.NpcCash and ConfigNPC.NpcCash.Common) or 300) and ConfigNPC.Models and ConfigNPC.Models.Rich then
+		modelPool = ConfigNPC.Models.Rich
+	elseif npcCash <= ((ConfigNPC and ConfigNPC.NpcCash and ConfigNPC.NpcCash.Poor) or 150) and ConfigNPC.Models and ConfigNPC.Models.Poor then
+		modelPool = ConfigNPC.Models.Poor
+	end
+	local used = {}
+	for _,pl in pairs(pendingGame:getPlayers()) do
+		if pl.getIsNpc and pl:getIsNpc() then
+			local m = pl.getNpcModel and pl:getNpcModel() or nil
+			if m then used[m] = true end
+		end
+	end
+	local filtered = {}
+	for _,m in ipairs(modelPool) do if not used[m] then table.insert(filtered, m) end end
+	local pool = (#filtered > 0) and filtered or modelPool
+	local npcModel = (#pool > 0) and pool[math.random(1, #pool)] or nil
+	local pendingPlayer = Player:New({
+		netId = -100000 - math.random(1, 100000),
+		name = 'NPC',
+		order = #pendingGame:getPlayers()+1,
+		isNpc = true,
+		npcCash = npcCash,
+		npcModel = npcModel,
+	})
+	pendingPlayer.seatIndex = seatIndex
+	pendingGame:addPlayer(pendingPlayer)
+	TriggerClientEvent('poker:notify', _source, { description = 'NPC added to table.', type = 'success', duration = 3000 })
+	TriggerClientEvent("rainbow_poker:Client:UpdatePokerTables", -1, locations)
+end)
 
 RegisterServerEvent("rainbow_poker:Server:FinalizePendingGameAndBegin", function(tableLocationIndex)
 	local _source = source
@@ -309,27 +374,49 @@ RegisterServerEvent("rainbow_poker:Server:FinalizePendingGameAndBegin", function
 
     -- Make sure all the pending players have enough money
     for k,v in pairs(pendingGame:getPlayers()) do
-        if not hasMoney(v:getNetId(), pendingGame:getAnte()) then
-            TriggerEvent("rainbow_poker:Server:CancelPendingGame", tableLocationIndex)
-            TriggerClientEvent('poker:notify', v:getNetId(), { description = "You don't have the ante money.", type = 'error', duration = 6000 })
-            return
+        if v.getIsNpc and v:getIsNpc() then
+            if (v.getNpcCash and v:getNpcCash() or 0) < pendingGame:getAnte() then
+                TriggerEvent("rainbow_poker:Server:CancelPendingGame", tableLocationIndex)
+                return
+            end
+        else
+            if not hasMoney(v:getNetId(), pendingGame:getAnte()) then
+                TriggerEvent("rainbow_poker:Server:CancelPendingGame", tableLocationIndex)
+                TriggerClientEvent('poker:notify', v:getNetId(), { description = "You don't have the ante money.", type = 'error', duration = 6000 })
+                return
+            end
         end
     end
 
     -- Add players to active game
     local activeGamePlayers = {}
     for k,v in pairs(pendingGame:getPlayers()) do
-        if takeMoney(v:getNetId(), pendingGame:getAnte()) then
+        if v.getIsNpc and v:getIsNpc() then
+            v:setNpcCash((v:getNpcCash() or 0) - pendingGame:getAnte())
             table.insert(activeGamePlayers, Player:New({
                 netId = v:getNetId(),
                 name = v:getName(),
                 order = v:getOrder(),
                 seatIndex = v.seatIndex,
                 totalAmountBetInGame = pendingGame:getAnte(),
+                isNpc = true,
+                npcCash = v:getNpcCash(),
+                npcModel = v:getNpcModel(),
             }))
         else
-            TriggerEvent("rainbow_poker:Server:CancelPendingGame", tableLocationIndex)
-            return
+            if takeMoney(v:getNetId(), pendingGame:getAnte()) then
+                table.insert(activeGamePlayers, Player:New({
+                    netId = v:getNetId(),
+                    name = v:getName(),
+                    order = v:getOrder(),
+                    seatIndex = v.seatIndex,
+                    totalAmountBetInGame = pendingGame:getAnte(),
+                    playerCash = getCash(v:getNetId())
+                }))
+            else
+                TriggerEvent("rainbow_poker:Server:CancelPendingGame", tableLocationIndex)
+                return
+            end
         end
     end
 
@@ -348,11 +435,28 @@ RegisterServerEvent("rainbow_poker:Server:FinalizePendingGameAndBegin", function
         sortAndAssignOrders(activeGamePlayers, hostSeat)
     end
 
+    local propHostNetId = nil
+    for _,p in ipairs(activeGamePlayers) do
+        if p:getNetId() == hostNetId and not (p.getIsNpc and p:getIsNpc()) then
+            propHostNetId = p:getNetId()
+            break
+        end
+    end
+    if not propHostNetId then
+        for _,p in ipairs(activeGamePlayers) do
+            if not (p.getIsNpc and p:getIsNpc()) then
+                propHostNetId = p:getNetId()
+                break
+            end
+        end
+    end
+
     local newActiveGame = Game:New({
         locationIndex = tableLocationIndex,
         players = activeGamePlayers,
         ante = pendingGame:getAnte(),
         bettingPool = pendingGame:getAnte() * #pendingGame:getPlayers(),
+        propHostNetId = propHostNetId,
     })
 
     newActiveGame:init()
@@ -374,11 +478,15 @@ RegisterServerEvent("rainbow_poker:Server:FinalizePendingGameAndBegin", function
                 break
             end
         end
-        TriggerClientEvent("rainbow_poker:Client:StartGame", player:getNetId(), newActiveGame, player.seatIndex or seatIndexToSend)
+        if not (player.getIsNpc and player:getIsNpc()) then
+            TriggerClientEvent("rainbow_poker:Client:StartGame", player:getNetId(), newActiveGame, player.seatIndex or seatIndexToSend)
+        end
     end
 
     Wait(1000)
     -- newActiveGame:startTurnTimer(newActiveGame:findPlayerByNetId(_source))
+
+    npcPlayTurns(newActiveGame)
 
 end)
 
@@ -429,6 +537,10 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionCheck", function(tableLoca
     end
 
     TriggerUpdate(game)
+    if Turns_BroadcastTurnState and game and game.getStep and game:getStep() ~= ROUNDS.SHOWDOWN then
+        Turns_BroadcastTurnState(game)
+    end
+    npcPlayTurns(game)
 end)
 
 RegisterServerEvent("rainbow_poker:Server:PlayerActionRaise", function(amountToRaise)
@@ -445,7 +557,11 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionRaise", function(amountToR
     game:stopTurnTimer()
 
     amountToRaise = tonumber(amountToRaise)
-    if takeMoney(_source, amountToRaise) then
+    local outstanding = math.max(0, game:getRoundsHighestBet() - (player:getAmountBetInRound() or 0))
+    local toPay = outstanding + amountToRaise
+    if takeMoney(_source, toPay) then
+        local p = game:findPlayerByNetId(_source)
+        if p and p.setPlayerCash then p:setPlayerCash((p:getPlayerCash() or 0) - toPay) end
         game:onPlayerDidActionRaise(_source, amountToRaise)
     else
         local cash = getCash(_source)
@@ -454,10 +570,11 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionRaise", function(amountToR
             return
         end
         local potBefore = game:getBettingPool()
-        local PlayerObj = RSGCore.Functions.GetPlayer(_source)
-        if PlayerObj then PlayerObj.Functions.RemoveMoney('cash', cash, 'poker-allin') end
+        Framework.removeMoney(_source, cash, 'poker-allin')
         game:addSidePot(potBefore)
         game:onPlayerDidActionAllIn(_source, cash)
+        local p = game:findPlayerByNetId(_source)
+        if p and p.setPlayerCash then p:setPlayerCash(0) end
     end
 
     if not game:advanceTurn() then
@@ -465,6 +582,10 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionRaise", function(amountToR
     end
 
     TriggerUpdate(game)
+    if Turns_BroadcastTurnState and game and game.getStep and game:getStep() ~= ROUNDS.SHOWDOWN then
+        Turns_BroadcastTurnState(game)
+    end
+    npcPlayTurns(game)
 end)
 
 RegisterServerEvent("rainbow_poker:Server:PlayerActionCall", function()
@@ -490,6 +611,8 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionCall", function()
     local amount = game:getRoundsHighestBet() - player:getAmountBetInRound()
 
     if takeMoney(_source, amount) then
+        local p = game:findPlayerByNetId(_source)
+        if p and p.setPlayerCash then p:setPlayerCash((p:getPlayerCash() or 0) - amount) end
         game:onPlayerDidActionCall(_source)
     else
         local cash = getCash(_source)
@@ -498,10 +621,11 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionCall", function()
             return
         end
         local potBefore = game:getBettingPool()
-        local PlayerObj = RSGCore.Functions.GetPlayer(_source)
-        if PlayerObj then PlayerObj.Functions.RemoveMoney('cash', cash, 'poker-allin') end
+        Framework.removeMoney(_source, cash, 'poker-allin')
         game:addSidePot(potBefore)
         game:onPlayerDidActionAllIn(_source, cash)
+        local p = game:findPlayerByNetId(_source)
+        if p and p.setPlayerCash then p:setPlayerCash(0) end
     end
 
     if not game:advanceTurn() then
@@ -509,6 +633,10 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionCall", function()
     end
 
     TriggerUpdate(game)
+    if Turns_BroadcastTurnState and game and game.getStep and game:getStep() ~= ROUNDS.SHOWDOWN then
+        Turns_BroadcastTurnState(game)
+    end
+    npcPlayTurns(game)
 end)
 
 RegisterServerEvent("rainbow_poker:Server:PlayerActionFold", function()
@@ -524,23 +652,81 @@ RegisterServerEvent("rainbow_poker:Server:PlayerLeave", function()
 
     if Config.DebugPrint then print("rainbow_poker:Server:PlayerLeave", _source) end
 
-    -- Double-check that the player has already folded
     local game = findActiveGameByPlayerNetId(_source)
+    if not game then return end
     local player = game:findPlayerByNetId(_source)
     if Config.DebugPrint then print("rainbow_poker:Server:PlayerLeave - player", player) end
-    if game:getStep() ~= ROUNDS.SHOWDOWN and player:getHasFolded() == false then
-        print("WARNING: Player trying to leave game pre-showdown when they haven't folded yet.", _source)
-        return
+
+    if game:getStep() ~= ROUNDS.SHOWDOWN and player and player:getHasFolded() == false then
+        fold(_source)
     end
 
     TriggerClientEvent("rainbow_poker:Client:ReturnPlayerLeave", _source)
 
     if game and player then
         player.hasLeftSession = true
+        if game.getPropHostNetId and game.setPropHostNetId and game:getPropHostNetId() == _source then
+            local newHost = nil
+            for _,p in pairs(game:getPlayers()) do
+                if p:getNetId() ~= _source and not (p.getIsNpc and p:getIsNpc()) and not p.hasLeftSession then
+                    newHost = p:getNetId()
+                    break
+                end
+            end
+            game:setPropHostNetId(newHost)
+            TriggerUpdate(game)
+        end
+        local anyHuman = false
+        for _,p in pairs(game:getPlayers()) do
+            if not (p.getIsNpc and p:getIsNpc()) and not p.hasLeftSession then
+                anyHuman = true
+                break
+            end
+        end
+        if not anyHuman then
+            endAndCleanupGame(game)
+        end
     end
 
 end)
 
+AddEventHandler('playerDropped', function(reason)
+    local _source = source
+
+    local game = findActiveGameByPlayerNetId(_source)
+    if not game then return end
+
+    local player = game:findPlayerByNetId(_source)
+
+    if game:getStep() ~= ROUNDS.SHOWDOWN and player and player:getHasFolded() == false then
+        fold(_source)
+    end
+
+    if game and player then
+        player.hasLeftSession = true
+        if game.getPropHostNetId and game.setPropHostNetId and game:getPropHostNetId() == _source then
+            local newHost = nil
+            for _,p in pairs(game:getPlayers()) do
+                if p:getNetId() ~= _source and not (p.getIsNpc and p:getIsNpc()) and not p.hasLeftSession then
+                    newHost = p:getNetId()
+                    break
+                end
+            end
+            game:setPropHostNetId(newHost)
+            TriggerUpdate(game)
+        end
+        local anyHuman = false
+        for _,p in pairs(game:getPlayers()) do
+            if not (p.getIsNpc and p:getIsNpc()) and not p.hasLeftSession then
+                anyHuman = true
+                break
+            end
+        end
+        if not anyHuman then
+            endAndCleanupGame(game)
+        end
+    end
+end)
 
 function checkForWinCondition(game)
     
@@ -590,30 +776,61 @@ function checkForWinCondition(game)
                 end
             end
             if winnerNetId then
-                giveMoney(winnerNetId, game:getBettingPool())
+                local wp = game:findPlayerByNetId(winnerNetId)
+                if wp and wp.getIsNpc and wp:getIsNpc() then
+                    wp:setNpcCash((wp:getNpcCash() or 0) + game:getBettingPool())
+                else
+                    giveMoney(winnerNetId, game:getBettingPool())
+                end
             end
         else
             local splitAmount = game:getBettingPool() / #winScenario:getTiedHands()
             for k,tiedHand in pairs(winScenario:getTiedHands()) do
                 local pid = tiedHand:getPlayerNetId()
-                giveMoney(pid, splitAmount)
+           
+                local wp = game:findPlayerByNetId(pid)
+                if wp and wp.getIsNpc and wp:getIsNpc() then
+                    wp:setNpcCash((wp:getNpcCash() or 0) + splitAmount)
+                else
+                    giveMoney(pid, splitAmount)
+                end
             end
         end
 
         -- Alert the win to all players of this poker game
         for k,player in pairs(game:getPlayers()) do
-            TriggerClientEvent("rainbow_poker:Client:AlertWin", player:getNetId(), winScenario)
+            if not (player.getIsNpc and player:getIsNpc()) then
+                TriggerClientEvent("rainbow_poker:Client:AlertWin", player:getNetId(), winScenario)
+            end
         end
 
         for k,player in pairs(game:getPlayers()) do
-            TriggerClientEvent('poker:notify', player:getNetId(), { description = 'Next hand in 10 seconds. Press DOWN to leave.', type = 'inform', duration = 10000 })
+            if not (player.getIsNpc and player:getIsNpc()) then
+                TriggerClientEvent('poker:notify', player:getNetId(), { description = 'Next hand in 30 seconds.', type = 'inform', duration = 10000 })
+            end
         end
 
-        Citizen.SetTimeout(10 * 1000, function()
+        Citizen.SetTimeout(Config.BetweenRoundWait, function()
             local continuingPlayers = {}
             for k,player in pairs(game:getPlayers()) do
                 if not player.hasLeftSession then
                     table.insert(continuingPlayers, player)
+                end
+            end
+
+            if ConfigNPC and ConfigNPC.Settings and ConfigNPC.Settings.NPCLeaveSeatFree then
+                local loc = locations[game:getLocationIndex()]
+                if loc then
+                    local free = (loc:getMaxPlayers() or 6) - (#continuingPlayers)
+                    if free < 2 then
+                        for i=#continuingPlayers,1,-1 do
+                            local p = continuingPlayers[i]
+                            if p.getIsNpc and p:getIsNpc() then
+                                table.remove(continuingPlayers, i)
+                                break
+                            end
+                        end
+                    end
                 end
             end
 
@@ -624,16 +841,33 @@ function checkForWinCondition(game)
 
             local activeGamePlayers = {}
             for k,player in ipairs(continuingPlayers) do
-                if takeMoney(player:getNetId(), game:getAnte()) then
-                    table.insert(activeGamePlayers, Player:New({
-                        netId = player:getNetId(),
-                        name = player:getName(),
-                        order = #activeGamePlayers + 1,
-                        seatIndex = player.seatIndex,
-                        totalAmountBetInGame = game:getAnte(),
-                    }))
+                if player.getIsNpc and player:getIsNpc() then
+                    if (player.getNpcCash and player:getNpcCash() or 0) >= game:getAnte() then
+                        player:setNpcCash((player:getNpcCash() or 0) - game:getAnte())
+                        table.insert(activeGamePlayers, Player:New({
+                            netId = player:getNetId(),
+                            name = player:getName(),
+                            order = #activeGamePlayers + 1,
+                            seatIndex = player.seatIndex,
+                            totalAmountBetInGame = game:getAnte(),
+                            isNpc = true,
+                            npcCash = player:getNpcCash(),
+                            npcModel = player:getNpcModel(),
+                        }))
+                    end
                 else
-                    TriggerClientEvent('poker:notify', player:getNetId(), { description = 'Insufficient funds for ante. Leaving table.', type = 'error', duration = 10000 })
+                    if takeMoney(player:getNetId(), game:getAnte()) then
+                        table.insert(activeGamePlayers, Player:New({
+                            netId = player:getNetId(),
+                            name = player:getName(),
+                            order = #activeGamePlayers + 1,
+                            seatIndex = player.seatIndex,
+                            totalAmountBetInGame = game:getAnte(),
+                            playerCash = getCash(player:getNetId())
+                        }))
+                    else
+                        TriggerClientEvent('poker:notify', player:getNetId(), { description = 'Insufficient funds for ante. Leaving table.', type = 'error', duration = 10000 })
+                    end
                 end
             end
 
@@ -678,11 +912,31 @@ function checkForWinCondition(game)
             local startSeat = prevSeat and nextStartingSeat(prevSeat, maxSeats, activeGamePlayers) or ((activeGamePlayers[1] and (activeGamePlayers[1].seatIndex or activeGamePlayers[1]:getSeatIndex())) or 1)
             sortAndAssignOrders(activeGamePlayers, startSeat)
 
+            local nextPropHostNetId = nil
+            local prevPropHost = game.getPropHostNetId and game:getPropHostNetId() or nil
+            if prevPropHost then
+                for _,p in ipairs(activeGamePlayers) do
+                    if p:getNetId() == prevPropHost and not (p.getIsNpc and p:getIsNpc()) then
+                        nextPropHostNetId = prevPropHost
+                        break
+                    end
+                end
+            end
+            if not nextPropHostNetId then
+                for _,p in ipairs(activeGamePlayers) do
+                    if not (p.getIsNpc and p:getIsNpc()) then
+                        nextPropHostNetId = p:getNetId()
+                        break
+                    end
+                end
+            end
+
             local newActiveGame = Game:New({
                 locationIndex = locationIndex,
                 players = activeGamePlayers,
                 ante = ante,
                 bettingPool = ante * #activeGamePlayers,
+                propHostNetId = nextPropHostNetId,
             })
 
             newActiveGame:init()
@@ -695,10 +949,14 @@ function checkForWinCondition(game)
             end
 
             for k,player in pairs(newActiveGame:getPlayers()) do
-                TriggerClientEvent("rainbow_poker:Client:StartGame", player:getNetId(), newActiveGame, player.seatIndex or player:getOrder())
+                if not (player.getIsNpc and player:getIsNpc()) then
+                    TriggerClientEvent("rainbow_poker:Client:StartGame", player:getNetId(), newActiveGame, player.seatIndex or player:getOrder())
+                end
             end
 
             TriggerClientEvent("rainbow_poker:Client:UpdatePokerTables", -1, locations)
+
+            npcPlayTurns(newActiveGame)
         end)
 
         
@@ -716,7 +974,9 @@ function endAndCleanupGame(game)
     if Config.DebugPrint then print("endAndCleanupGame - locationIndex:", locationIndex) end
 
     for k,player in pairs(game:getPlayers()) do
-        TriggerClientEvent("rainbow_poker:Client:CleanupFinishedGame", player:getNetId())
+        if not (player.getIsNpc and player:getIsNpc()) then
+            TriggerClientEvent("rainbow_poker:Client:CleanupFinishedGame", player:getNetId())
+        end
     end
 
     -- Reset the location
@@ -753,6 +1013,7 @@ function fold(targetNetId)
             checkForWinCondition(game)
         end
 
+        npcPlayTurns(game)
         TriggerUpdate(game)
     else
         -- Last person standing!
@@ -763,10 +1024,7 @@ function fold(targetNetId)
 end
 
 function getCash(targetNetId)
-    local Player = RSGCore.Functions.GetPlayer(targetNetId)
-    if not Player then return 0 end
-    local cash = Player.Functions.GetMoney('cash') or 0
-    return cash
+    return Framework.getCash(targetNetId)
 end
 
 function hasMoney(targetNetId, amount)
@@ -777,23 +1035,23 @@ end
 
 function takeMoney(targetNetId, amount)
     amount = tonumber(amount)
-    local Player = RSGCore.Functions.GetPlayer(targetNetId)
-    if not Player then return false end
-    local cash = Player.Functions.GetMoney('cash') or 0
-    if cash < amount then
+    if not hasMoney(targetNetId, amount) then
         TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You don't have $%.2f!", amount), type = 'error', duration = 20000 })
         return false
     end
-    Player.Functions.RemoveMoney('cash', amount, 'poker-ante')
+    if not Framework.removeMoney(targetNetId, amount, 'poker-ante') then
+        TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You don't have $%.2f!", amount), type = 'error', duration = 20000 })
+        return false
+    end
     TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You have bet $%.2f.", amount), type = 'inform', duration = 6000 })
     return true
 end
 
 function giveMoney(targetNetId, amount)
     amount = tonumber(amount)
-    local Player = RSGCore.Functions.GetPlayer(targetNetId)
-    if not Player then return false end
-    Player.Functions.AddMoney('cash', amount, 'poker-win')
+    if not Framework.addMoney(targetNetId, amount, 'poker-win') then
+        return false
+    end
     TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You have won $%.2f.", amount), type = 'success', duration = 6000 })
     return true
 end
@@ -815,9 +1073,12 @@ function TriggerUpdate(game)
 
     -- Loop thru all this game's players
     for k,player in pairs(game:getPlayers()) do
-        TriggerClientEvent("rainbow_poker:Client:TriggerUpdate", player:getNetId(), game)
+        if not (player.getIsNpc and player:getIsNpc()) then
+            TriggerClientEvent("rainbow_poker:Client:TriggerUpdate", player:getNetId(), game)
+        end
     end
 end
+
 
 
 --------

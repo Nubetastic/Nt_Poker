@@ -1,9 +1,10 @@
 # Nt_Poker
 
 A free, open-source RedM script for poker.
+** Still a work in progress **
 
 ## Dependencies
-- RSP Core
+- RSG Core or VORP
 - Ox_lib
 
 ## Features
@@ -15,10 +16,21 @@ A free, open-source RedM script for poker.
     - added props to table, aesthetic only.
     - Ante controls raise increments and max raise amount.
     - Randomized seats
-    - Auto next hand after 10 seconds, with shifting who goes first.
+    - Auto next hand after a few seconds, with shifting who goes first.
     - Players can join while game is in progress
     - Verifies player funds and takes appropriate actions
+    - Money is deducted from player as they bet.
+- NPC Players
+    - Code is very basic right now, will expand on it later.
+    - 1 player is prop host, they will spawn in table props and npcs. If they leave a new prop host is assigned.
+    - NPC's are played by the server.
+
+
+## To DO
+-NPC AI
+    - NPC AI is very basic right now, will expand later.
+- Bug fixing
+    - Still need to fix some bugs, need more player vs player testing.
 
 ## Special Notes
-- NPC's were used to speed up testing and I might write up working npc code later once script is working for players.
 - I could not figure out how to change the faces on the cards that the players hold.

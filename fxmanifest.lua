@@ -3,17 +3,27 @@ games {"rdr3"}
 rdr3_warning 'I acknowledge that this is a prerelease build of RedM, and I am aware my resources *will* become incompatible once RedM ships.'
 
 client_scripts {
-	"client/*.lua",
+	"client/client.lua",
+	"client/nui.lua",
+	"client/props.lua",
+	"client/npc.lua",
+	"client/proptest.lua",
 }
 
 server_scripts {
-	"server/*.lua",
+	"server/framework.lua",
+	"server/npc.lua",
+	"server/server.lua",
+	"server/sv_command.lua",
+	"server/proptest.lua",
 	"@oxmysql/lib/MySQL.lua",
 }
 
 shared_scripts {
 	"config.lua",
+	"configNPC.lua",
 	"configProps.lua",
+	"configproptest.lua",
 	"shared/*.lua",
 	"shared/**/*.lua",
 }

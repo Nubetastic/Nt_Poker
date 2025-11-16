@@ -60,12 +60,7 @@ function UI:AlertWinScenario(winScenario)
         end
     end
 
-    -- Play audio for win or lose
-    if winScenario["thisPlayersWinningHand"] then
-        TriggerEvent('poker:playAudio', Config.Audio.Win)
-    else
-        TriggerEvent('poker:playAudio', Config.Audio.Lose)
-    end
+
 
     SendNUIMessage({
         type = "win",
@@ -93,8 +88,6 @@ end
 RegisterNUICallback("playCardFlip", function(args, cb)
 	-- if Config.DebugPrint then print("closeAll") end
     local rand = math.random(1,3)
-    local audioName = Config.Audio["CardFlip"..rand]
-	TriggerEvent('poker:playAudio', audioName)
 	cb("ok")
 end)
 

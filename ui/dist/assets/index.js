@@ -374,6 +374,12 @@ function ge(a, s, f, c, r, o) {
                                             cols: "12",
                                             class: "player-data-item pb-0"
                                         }, {
+                                            default: i(() => [e("span", { class: "text-amber", style: { "font-size": "14px" } }, "Cash: $" + l(u.isNpc ? u.npcCash : u.playerCash), 1)]),
+                                            _: 2
+                                        }, 1024), t(n, {
+                                            cols: "12",
+                                            class: "player-data-item pb-0"
+                                        }, {
                                             default: i(() => [e("span", { style: { "font-size": "14px" } }, "Action: " + l(o.getThisRoundsActionFromPlayer(u) + (u.amountBetInRound > 0 ? " $" + u.amountBetInRound : "")), 1)]),
                                             _: 2
                                         }, 1024), t(n, {
