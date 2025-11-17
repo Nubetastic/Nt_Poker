@@ -527,6 +527,11 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionCheck", function(tableLoca
     if Config.DebugPrint then print("rainbow_poker:Server:PlayerActionCheck", _source, tableLocationIndex) end
 
     local game = findActiveGameByPlayerNetId(_source)
+    if not game then return end
+    local player = game:findPlayerByNetId(_source)
+    if not player or game:getCurrentTurn() ~= player:getOrder() or player:getIsAllIn() then
+        return
+    end
 
     game:stopTurnTimer()
 
@@ -653,15 +658,16 @@ RegisterServerEvent("rainbow_poker:Server:PlayerLeave", function()
     if Config.DebugPrint then print("rainbow_poker:Server:PlayerLeave", _source) end
 
     local game = findActiveGameByPlayerNetId(_source)
+    local player = game and game:findPlayerByNetId(_source) or nil
+
+    TriggerClientEvent("rainbow_poker:Client:ReturnPlayerLeave", _source)
+
     if not game then return end
-    local player = game:findPlayerByNetId(_source)
     if Config.DebugPrint then print("rainbow_poker:Server:PlayerLeave - player", player) end
 
     if game:getStep() ~= ROUNDS.SHOWDOWN and player and player:getHasFolded() == false then
         fold(_source)
     end
-
-    TriggerClientEvent("rainbow_poker:Client:ReturnPlayerLeave", _source)
 
     if game and player then
         player.hasLeftSession = true
@@ -994,6 +1000,7 @@ end
 
 function fold(targetNetId)
     local game = findActiveGameByPlayerNetId(targetNetId)
+    if not game then return end
 
     game:stopTurnTimer()
 
