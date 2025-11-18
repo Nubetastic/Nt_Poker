@@ -56,7 +56,9 @@ const F = {
                 viewPokerGame: !1,
                 game: void 0,
                 thisPlayer: void 0,
-                winScenario: void 0
+                winScenario: void 0,
+                revealing: !1,
+                pendingUpdate: void 0
             }
         },
         mounted() {
@@ -70,7 +72,7 @@ const F = {
         },
         methods: {
             async onMessage(a) {
-                a.data.type === "start" && (this.viewPokerGame = !0, this.game = a.data.game, this.thisPlayer = a.data.thisPlayer, this.winScenario = void 0), a.data.type === "update" && (this.game&&this.game.step == "INITIAL" && a.data.game.step == "FLOP" && (await b(1e3), this.fireEvent("playCardFlip"), this.game.board.cardV.isRevealed = !0, await b(1100), this.fireEvent("playCardFlip"), this.game.board.cardW.isRevealed = !0, await b(1200), this.fireEvent("playCardFlip"), this.game.board.cardX.isRevealed = !0), this.game&&this.game.step == "FLOP" && a.data.game.step == "TURN" && (await b(1e3), this.fireEvent("playCardFlip"), this.game.board.cardY.isRevealed = !0), this.game&&this.game.step == "TURN" && a.data.game.step == "RIVER" && (await b(1e3), this.fireEvent("playCardFlip"), this.game.board.cardZ.isRevealed = !0), this.game = a.data.game, this.thisPlayer = a.data.thisPlayer), a.data.type === "win" && (this.winScenario = a.data.winScenario, this.winScenario.thisPlayersWinningHand && (this.winScenario.thisPlayersWinningHand.winningHandType = this.winScenario.thisPlayersWinningHand.winningHandType.toString().replace(/_/g, " "))), a.data.type === "close" && (this.viewPokerGame = !1, this.game = void 0, this.thisPlayer = void 0, this.winScenario = void 0)
+                a.data.type === "start" && (this.viewPokerGame = !0, this.game = a.data.game, this.thisPlayer = a.data.thisPlayer, this.winScenario = void 0), a.data.type === "update" && (async()=>{ if(this.revealing){ this.pendingUpdate = a; return } const ps=this.game&&this.game.step, ns=a.data.game&&a.data.game.step; const adv=(ps=="INITIAL"&&ns=="FLOP")||(ps=="FLOP"&&ns=="TURN")||(ps=="TURN"&&ns=="RIVER"); if(adv){ this.revealing=!0; if(ps=="INITIAL"&&ns=="FLOP"){ await b(1e3); this.fireEvent("playCardFlip"); this.game.board.cardV.isRevealed=!0; await b(1100); this.fireEvent("playCardFlip"); this.game.board.cardW.isRevealed=!0; await b(1200); this.fireEvent("playCardFlip"); this.game.board.cardX.isRevealed=!0 } else if(ps=="FLOP"&&ns=="TURN"){ await b(1e3); this.fireEvent("playCardFlip"); this.game.board.cardY.isRevealed=!0 } else if(ps=="TURN"&&ns=="RIVER"){ await b(1e3); this.fireEvent("playCardFlip"); this.game.board.cardZ.isRevealed=!0 } this.game = a.data.game; this.thisPlayer = a.data.thisPlayer; this.revealing=!1; if(this.pendingUpdate){ const u=this.pendingUpdate; this.pendingUpdate=void 0; await this.onMessage(u) } } else { this.game = a.data.game; this.thisPlayer = a.data.thisPlayer } })(), a.data.type === "win" && (this.winScenario = a.data.winScenario, this.winScenario.thisPlayersWinningHand && (this.winScenario.thisPlayersWinningHand.winningHandType = this.winScenario.thisPlayersWinningHand.winningHandType.toString().replace(/_/g, " "))), a.data.type === "close" && (this.viewPokerGame = !1, this.game = void 0, this.thisPlayer = void 0, this.winScenario = void 0)
             },
             fireEvent(a, s = {}) {
                 fetch(`https://${GetParentResourceName()}/` + a, {

@@ -12,11 +12,14 @@
     <script type="module" src="./assets/index.js"></script>
     <style>
       #blinds-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
-      #blinds-modal{width:420px;max-width:90vw;background:#111;border:1px solid #333;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.4);color:#eee}
+      #blinds-modal{width:460px;max-width:90vw;background:#111;border:1px solid #333;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.4);color:#eee}
       #blinds-modal h3{margin:0;padding:16px 20px;font-size:18px;border-bottom:1px solid #222}
       #blinds-modal .content{padding:16px 20px}
+      #blinds-modal .row{display:flex;flex-direction:column;gap:10px}
+      #blinds-modal .row .col{flex:1}
+      #blinds-modal .hint{margin-top:10px;color:#bbb}
       #blinds-modal .actions{display:flex;gap:10px;justify-content:flex-end;padding:0 20px 16px}
-      #blinds-input{width:100%;padding:10px 12px;border-radius:6px;border:1px solid #444;background:#1a1a1a;color:#eee;font-size:16px}
+      #blinds-input,#hl-mult{width:100%;padding:10px 12px;border-radius:6px;border:1px solid #444;background:#1a1a1a;color:#eee;font-size:16px}
       #blinds-cancel,#blinds-confirm{padding:8px 14px;border-radius:6px;border:1px solid #444;background:#222;color:#eee;cursor:pointer}
       #blinds-confirm{background:#396cd8;border-color:#396cd8}
       #blinds-cancel:hover{background:#2a2a2a}
@@ -24,12 +27,26 @@
     </style>
     <div id="blinds-modal-overlay">
       <div id="blinds-modal" role="dialog" aria-modal="true" aria-labelledby="blinds-title">
-        <h3 id="blinds-title">Set Blinds</h3>
+        <h3 id="blinds-title">Set Table Options</h3>
         <div class="content">
-          <label for="blinds-input" style="display:block;margin-bottom:6px;color:#ccc">Blind Amount ($)</label>
-          <input id="blinds-input" type="number" min="1" max="1000" step="1" value="5" />
-          <div id="blinds-inc" style="margin-top:10px;color:#bbb">Raise Increment: +$1</div>
-          <div id="blinds-max" style="color:#bbb">Max Bet This Hand: $5</div>
+          <div class="row" style="margin-bottom:10px">
+            <div class="col">
+              <label for="blinds-input" style="display:block;margin-bottom:6px;color:#ccc">Ante ($)</label>
+              <input id="blinds-input" type="number" min="1" max="1000" step="1" value="5" />
+            </div>
+            <div class="col">
+              <label for="hl-mult" style="display:block;margin-bottom:6px;color:#ccc">Hand Limit Multiplier</label>
+              <input id="hl-mult" type="number" min="0" max="1000" step="1" value="0" />
+            </div>
+          </div>
+          <div id="blinds-inc" class="hint">Raise Increment: +$1</div>
+          <div id="blinds-max" class="hint">Hand Limit Amount: No limit</div>
+          <div id="npc-row" style="margin-top:10px;display:none">
+            <label for="npc-enable" style="display:flex;align-items:center;gap:8px;color:#ccc">
+              <input id="npc-enable" type="checkbox" /> Enable NPCs
+            </label>
+            <div id="npc-hint" class="hint"></div>
+          </div>
         </div>
         <div class="actions">
           <button id="blinds-cancel" type="button">Cancel</button>
@@ -41,23 +58,46 @@
       (function(){
         const overlay = document.getElementById('blinds-modal-overlay');
         const input = document.getElementById('blinds-input');
+        const hl = document.getElementById('hl-mult');
         const btnOk = document.getElementById('blinds-confirm');
         const btnCancel = document.getElementById('blinds-cancel');
         const incEl = document.getElementById('blinds-inc');
         const maxEl = document.getElementById('blinds-max');
+        const npcRow = document.getElementById('npc-row');
+        const npcCb = document.getElementById('npc-enable');
+        const npcHint = document.getElementById('npc-hint');
         let min=1, max=1000;
         function render(){
           const v = Number(input.value)||min;
-          incEl.textContent = 'Raise Increment: +$' + v;
-          maxEl.textContent = 'Max Bet This Hand: $' + Math.floor(v*5);
+          const m = Math.max(0, Number(hl.value)||0);
+          incEl.textContent = 'Raise Increment: +$' + Math.floor(v);
+          if(m <= 0){
+            maxEl.textContent = 'Hand Limit Amount: No limit';
+          } else {
+            maxEl.textContent = 'Hand Limit Amount: $' + Math.floor(v*m);
+          }
+          const hlAmt = Math.floor(v * m);
+          let allowed = !!window._npcGlobal;
+          if(allowed && window._npcOnlyOnHL){
+            allowed = (m > 0) && (!window._npcHLMax || hlAmt <= window._npcHLMax);
+          }
+          npcRow.style.display = allowed ? 'block' : 'none';
+          if(!allowed){ npcCb.checked = false; }
+          npcHint.textContent = allowed ? 'NPCs can be enabled for this table.' : 'NPCs require Hand Limit > 0 and within server max.';
         }
         function show(opts){
           min = Number(opts && opts.min || 1);
           max = Number(opts && opts.max || 1000);
           const def = Number(opts && opts.defaultBlind || min);
+          const defMult = Number(opts && opts.defaultHandLimitMultiplier || 0);
+          window._npcGlobal = !!(opts && opts.npcEnableGlobal);
+          window._npcOnlyOnHL = !!(opts && opts.npcEnableOnlyOnHandLimit);
+          window._npcHLMax = Number(opts && opts.npcHandLimitMax || 0);
           input.min = String(min);
           input.max = String(max);
           input.value = String(def);
+          hl.value = String(Math.max(0, Math.floor(defMult)));
+          npcCb.checked = false;
           render();
           overlay.style.display = 'flex';
           setTimeout(()=>input.focus(), 0);
@@ -71,13 +111,19 @@
           try{ fetch(`https://${GetParentResourceName()}/${name}`, {method:'POST', body: JSON.stringify(body||{})}); }catch(e){}
         }
         input.addEventListener('input', render);
+        hl.addEventListener('input', render);
+        npcCb.addEventListener('change', function(){ /* no-op, value read on submit */ });
         btnOk.addEventListener('click', function(){
           let v = Number(input.value);
+          let m = Number(hl.value);
           if(!isFinite(v)) return;
+          if(!isFinite(m)) m = 0;
           if(v < min) v = min;
           if(v > max) v = max;
+          if(m < 0) m = 0;
+          const enableNpcs = (npcRow.style.display !== 'none') && !!npcCb.checked;
           hide();
-          post('blindsSelected', { blind: Math.floor(v) });
+          post('blindsSelected', { blind: Math.floor(v), handLimitMultiplier: Math.floor(m), enableNpcs: enableNpcs });
         });
         btnCancel.addEventListener('click', function(){ hide(); post('cancelBlinds'); });
         overlay.addEventListener('click', function(e){ if(e.target===overlay){ hide(); post('cancelBlinds'); }});
