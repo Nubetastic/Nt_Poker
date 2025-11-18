@@ -16,7 +16,7 @@ function npcPlayTurns(game)
             endAndCleanupGame(game)
             break
         end
-        Wait(math.random(3000, 5000))
+        Wait(100)
         local outstanding = math.max(0, game:getRoundsHighestBet() - (current:getAmountBetInRound() or 0))
         local cash = current.getNpcCash and current:getNpcCash() or 0
         local ante = game:getAnte() or 1
@@ -44,6 +44,27 @@ function npcPlayTurns(game)
                     action = 'CALL'
                 end
             end
+        end
+        if game.getHandLimitMultiplier and (game:getHandLimitMultiplier() or 0) > 0 then
+        local limit = (game:getAnte() or 0) * game:getHandLimitMultiplier()
+        local remaining = limit - (current:getTotalAmountBetInGame() or 0)
+        local toPay = outstanding + (action == 'RAISE' and raiseBy or 0)
+        if remaining <= 0 then
+            action = (outstanding == 0) and 'CHECK' or 'FOLD'
+            raiseBy = 0
+        elseif action ~= 'CHECK' and toPay > remaining then
+            action = (outstanding == 0) and 'CHECK' or 'FOLD'
+            raiseBy = 0
+        end
+        end
+        local limit = (game:getAnte() or 0) * game:getHandLimitMultiplier()
+        local remaining = limit - (current:getTotalAmountBetInGame() or 0)
+        local cash = current.getNpcCash and current:getNpcCash() or 0
+        if game.getHandLimitMultiplier and remaining == 0 then
+            action = 'CHECK'
+            --Wait(1500)
+        else
+        Wait(math.random(3000, 5000))
         end
         if action == 'FOLD' then
             game:onPlayerDidActionFold(current:getNetId())

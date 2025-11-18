@@ -4,6 +4,7 @@ PendingGame = {}
 PendingGame.initiatorNetId = 0
 PendingGame.players = {}
 PendingGame.ante = 0
+PendingGame.handLimitMultiplier = 0
 
 -- function PendingGame:getLocation()
 -- 	return self.location
@@ -37,6 +38,14 @@ function PendingGame:setAnte(ante)
 	self.ante = tonumber(ante) or 0
 end
 
+function PendingGame:getHandLimitMultiplier()
+	return self.handLimitMultiplier or 0
+end
+
+function PendingGame:setHandLimitMultiplier(mult)
+	self.handLimitMultiplier = tonumber(mult) or 0
+end
+
 --------
 
 function PendingGame:addPlayer(pendingPlayer)
@@ -62,5 +71,6 @@ function PendingGame:New(obj)
     instance.initiatorNetId = obj.initiatorNetId
 	instance.players = obj.players
 	instance.ante = tonumber(obj.ante) or 0
+	instance.handLimitMultiplier = tonumber(obj.handLimitMultiplier) or 0
     return instance
 end

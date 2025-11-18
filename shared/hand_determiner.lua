@@ -436,8 +436,10 @@ function getWinScenarioFromSetOfPlayers(players, board, round)
                 end
             end
 
-            if Config.DebugPrint then print("--------------------------") end
-            if Config.DebugPrint then print("--best hand after A&B:", thisPlayersBestHand:getString()) end
+            if thisPlayersBestHand then
+                if Config.DebugPrint then print("--------------------------") end
+                if Config.DebugPrint then print("--best hand after A&B:", thisPlayersBestHand:getString()) end
+            end
 
 
             -- Only if there's 5 revealed cards on the board (River/Showdown)
@@ -454,13 +456,15 @@ function getWinScenarioFromSetOfPlayers(players, board, round)
             end
 
 
-            if Config.DebugPrint then print("--------------------------") end
-            if Config.DebugPrint then print("--------------------------") end
-            if Config.DebugPrint then print("getWinScenarioFromSetOfPlayers() - PLAYER #"..k.." - thisPlayersBestHand:", thisPlayersBestHand:getString()) end
-            if Config.DebugPrint then print("--------------------------") end
-            if Config.DebugPrint then print("--------------------------") end
+            if thisPlayersBestHand then
+                if Config.DebugPrint then print("--------------------------") end
+                if Config.DebugPrint then print("--------------------------") end
+                if Config.DebugPrint then print("getWinScenarioFromSetOfPlayers() - PLAYER #"..k.." - thisPlayersBestHand:", thisPlayersBestHand:getString()) end
+                if Config.DebugPrint then print("--------------------------") end
+                if Config.DebugPrint then print("--------------------------") end
 
-            eachPlayersBestHand[thisPlayersBestHand:getPlayerNetId()] = thisPlayersBestHand
+                eachPlayersBestHand[thisPlayersBestHand:getPlayerNetId()] = thisPlayersBestHand
+            end
         end
     end
 

@@ -1,6 +1,8 @@
 ConfigNPC = {}
 
 ConfigNPC.NPCEnable = true -- Enable npc players at tables.
+ConfigNPC.NPCEnableOnlyOnHandLimit = true -- If true npc players will only be added to hand limit tables.
+ConfigNPC.NPCHandLimitMax = 100 -- Max hand limit for npc players to be added to table.
 
 ConfigNPC.Settings = {
     MaxPerTable = 3, -- max number of npc players at any table.

@@ -457,6 +457,10 @@ CreateThread(function()
             if myTurn and not wasMyTurn then Wait(2000) end
 
             if myTurn then
+                if game.handLimitMultiplier > 0 and thisPlayer.totalAmountBetInGame == (game.ante * game.handLimitMultiplier) then
+                    --Wait(1500)
+                    TriggerServerEvent("rainbow_poker:Server:PlayerActionCheck")
+                end
                 local canEnable = GetGameTimer() >= revealHoldUntil
                 if not canEnable and promptsActive then
                     PromptCall:TogglePrompt(false)
@@ -478,6 +482,25 @@ CreateThread(function()
                     PromptSetText(PromptRaise.Prompt, CreateVarString(10, "LITERAL_STRING", string.format("Raise by $%d | (~o~$%d~s~)", turnRaiseAmount, game.currentGoingBet + turnRaiseAmount), "Title"))
                     PromptSetText(PromptCall.Prompt, CreateVarString(10, "LITERAL_STRING", string.format("Call | (~o~$%d~s~)", (game.roundsHighestBet - thisPlayer.amountBetInRound)), "Title"))
 
+                    -- compute max raise considering cash, outstanding, and hand limit
+                    local outstanding = math.max(0, (game.roundsHighestBet or 0) - (thisPlayer.amountBetInRound or 0))
+                    local cash = (thisPlayer.playerCash or 0)
+                    local maxRaise = math.max(0, cash - outstanding)
+                    local hlm = game.handLimitMultiplier or 0
+                    if hlm and hlm > 0 then
+                        local limit = (game.ante or 0) * hlm
+                        local remaining = math.max(0, limit - (thisPlayer.totalAmountBetInGame or 0))
+                        maxRaise = math.min(maxRaise, math.max(0, remaining - outstanding))
+                    end
+                    local maxStep = maxRaise - (maxRaise % turnBaseRaiseAmount)
+                    if maxStep >= turnBaseRaiseAmount then
+                        if turnRaiseAmount > maxStep then
+                            turnRaiseAmount = maxStep
+                        end
+                    else
+                        turnRaiseAmount = turnBaseRaiseAmount
+                    end
+
                     if canEnable then
                         -- Conditionally show Call or Check depending on this round's betting circumstances
                         if game.roundsHighestBet and game.roundsHighestBet > 0 then
@@ -492,14 +515,15 @@ CreateThread(function()
                             PromptSetEnabled(PromptCall.Prompt, false)
                         end
 
-                        PromptRaise:TogglePrompt(true)
-                        PromptSetEnabled(PromptRaise.Prompt, true)
+                        local canRaiseNow = (maxStep >= turnBaseRaiseAmount)
+                        PromptRaise:TogglePrompt(canRaiseNow)
+                        PromptSetEnabled(PromptRaise.Prompt, canRaiseNow)
                         PromptFold:TogglePrompt(true)
                         PromptSetEnabled(PromptFold.Prompt, true)
-                        PromptIncreaseAmount:TogglePrompt(true)
-                        PromptSetEnabled(PromptIncreaseAmount.Prompt, true)
-                        PromptDecreaseAmount:TogglePrompt(true)
-                        PromptSetEnabled(PromptDecreaseAmount.Prompt, true)
+                        PromptIncreaseAmount:TogglePrompt(canRaiseNow)
+                        PromptSetEnabled(PromptIncreaseAmount.Prompt, canRaiseNow)
+                        PromptDecreaseAmount:TogglePrompt(canRaiseNow)
+                        PromptSetEnabled(PromptDecreaseAmount.Prompt, canRaiseNow)
 
                         PromptGroupInGame:ShowGroup("Poker Game")
                     end
@@ -545,6 +569,12 @@ CreateThread(function()
                         local outstanding = math.max(0, (game.roundsHighestBet or 0) - (thisPlayer.amountBetInRound or 0))
                         local cash = (thisPlayer.playerCash or 0)
                         local maxRaise = math.max(0, cash - outstanding)
+                        local hlm = game.handLimitMultiplier or 0
+                        if hlm and hlm > 0 then
+                            local limit = (game.ante or 0) * hlm
+                            local remaining = math.max(0, limit - (thisPlayer.totalAmountBetInGame or 0))
+                            maxRaise = math.min(maxRaise, math.max(0, remaining - outstanding))
+                        end
                         if maxRaise >= turnBaseRaiseAmount then
                             local maxStep = maxRaise - (maxRaise % turnBaseRaiseAmount)
                             if turnRaiseAmount < maxStep then

@@ -96,10 +96,10 @@ end)
 
 
 
-RegisterServerEvent("rainbow_poker:Server:StartNewPendingGame", function(player1sChosenName, anteAmount, tableLocationIndex)
+RegisterServerEvent("rainbow_poker:Server:StartNewPendingGame", function(player1sChosenName, anteAmount, tableLocationIndex, handLimitMultiplier, enableNpcs)
 	local _source = source
 
-    if Config.DebugPrint then print("StartNewPendingGame", player1sChosenName, anteAmount, tableLocationIndex) end
+    if Config.DebugPrint then print("StartNewPendingGame", player1sChosenName, anteAmount, tableLocationIndex, handLimitMultiplier, enableNpcs) end
 
     -- Validate location index and state
     local loc = locations[tableLocationIndex]
@@ -149,19 +149,78 @@ RegisterServerEvent("rainbow_poker:Server:StartNewPendingGame", function(player1
             pendingPlayer1,
         },
         ante = anteAmount,
+        handLimitMultiplier = tonumber(handLimitMultiplier) or 0,
     })
 
     locations[tableLocationIndex]:setPendingGame(newPendingGame)
     locations[tableLocationIndex]:setState(LOCATION_STATES.PENDING_GAME)
 
+    if enableNpcs and ConfigNPC and ConfigNPC.NPCEnable then
+        local hlm = (newPendingGame.getHandLimitMultiplier and newPendingGame:getHandLimitMultiplier()) or 0
+        if (not ConfigNPC.NPCEnableOnlyOnHandLimit) or (hlm > 0) then
+            local withinMax = true
+            if tonumber(ConfigNPC.NPCHandLimitMax or 0) and tonumber(ConfigNPC.NPCHandLimitMax or 0) > 0 then
+                local limitAmt = (tonumber(newPendingGame:getAnte()) or 0) * (tonumber(hlm) or 0)
+                if limitAmt > tonumber(ConfigNPC.NPCHandLimitMax) then withinMax = false end
+            end
+            if withinMax then
+                local npcsAtTable = 0
+                for _,p in pairs(newPendingGame:getPlayers()) do
+                    if p.getIsNpc and p:getIsNpc() then npcsAtTable = npcsAtTable + 1 end
+                end
+                local canAddMore = true
+                if ConfigNPC.Settings and ConfigNPC.Settings.MaxPerTable and npcsAtTable >= ConfigNPC.Settings.MaxPerTable then
+                    canAddMore = false
+                end
+                if canAddMore then
+                    local taken = {}
+                    for _,v in pairs(newPendingGame:getPlayers()) do if v.seatIndex then taken[v.seatIndex] = true end end
+                    local available = {}
+                    for i=1, locations[tableLocationIndex]:getMaxPlayers() do if not taken[i] then table.insert(available, i) end end
+                    if #available > 0 then
+                        local seatIndex = available[math.random(1, #available)]
+                        local cashMin = (ConfigNPC.NpcCash and ConfigNPC.NpcCash.Min) or 50
+                        local cashMax = (ConfigNPC.NpcCash and ConfigNPC.NpcCash.Max) or 500
+                        local npcCash = math.random(cashMin, cashMax)
+                        local modelPool = (ConfigNPC.Models and (ConfigNPC.Models.Common or {})) or {}
+                        if npcCash >= ((ConfigNPC.NpcCash and ConfigNPC.NpcCash.Common) or 300) and ConfigNPC.Models and ConfigNPC.Models.Rich then
+                            modelPool = ConfigNPC.Models.Rich
+                        elseif npcCash <= ((ConfigNPC.NpcCash and ConfigNPC.NpcCash.Poor) or 150) and ConfigNPC.Models and ConfigNPC.Models.Poor then
+                            modelPool = ConfigNPC.Models.Poor
+                        end
+                        local used = {}
+                        for _,pl in pairs(newPendingGame:getPlayers()) do
+                            if pl.getIsNpc and pl:getIsNpc() then
+                                local m = pl.getNpcModel and pl:getNpcModel() or nil
+                                if m then used[m] = true end
+                            end
+                        end
+                        local filtered = {}
+                        for _,m in ipairs(modelPool) do if not used[m] then table.insert(filtered, m) end end
+                        local pool = (#filtered > 0) and filtered or modelPool
+                        local npcModel = (#pool > 0) and pool[math.random(1, #pool)] or nil
+                        local pendingPlayer = Player:New({
+                            netId = -100000 - math.random(1, 100000),
+                            name = 'NPC',
+                            order = #newPendingGame:getPlayers()+1,
+                            isNpc = true,
+                            npcCash = npcCash,
+                            npcModel = npcModel,
+                        })
+                        pendingPlayer.seatIndex = seatIndex
+                        newPendingGame:addPlayer(pendingPlayer)
+                    end
+                end
+            end
+        end
+    end
+
     if Config.DebugPrint then print("StartNewGame - newPendingGame", newPendingGame) end
 
-    -- Make the player sit at the chair of their order
     TriggerClientEvent("rainbow_poker:Client:ReturnStartNewPendingGame", _source, tableLocationIndex, pendingPlayer1, pendingPlayer1.seatIndex)
 
     TriggerClientEvent("rainbow_poker:Client:UpdatePokerTables", -1, locations)
 
-    -- Discord logging removed
 end)
 
 RegisterServerEvent("rainbow_poker:Server:JoinGame", function(playersChosenName, tableLocationIndex)
@@ -291,6 +350,19 @@ RegisterServerEvent("rainbow_poker:Server:AddNpcToPendingGame", function(tableLo
 	if not (ConfigNPC and ConfigNPC.NPCEnable) then
 		TriggerClientEvent('poker:notify', _source, { description = 'NPCs are disabled.', type = 'error', duration = 4000 })
 		return
+	end
+	-- Enforce NPC hand-limit rules
+	local hlm = (pendingGame.getHandLimitMultiplier and pendingGame:getHandLimitMultiplier()) or 0
+	if ConfigNPC and ConfigNPC.NPCEnableOnlyOnHandLimit and (hlm <= 0) then
+		TriggerClientEvent('poker:notify', _source, { description = 'NPCs require Hand Limit > 0.', type = 'error', duration = 4000 })
+		return
+	end
+	if ConfigNPC and tonumber(ConfigNPC.NPCHandLimitMax or 0) and tonumber(ConfigNPC.NPCHandLimitMax or 0) > 0 then
+		local limitAmt = (tonumber(pendingGame:getAnte()) or 0) * (tonumber(hlm) or 0)
+		if limitAmt > tonumber(ConfigNPC.NPCHandLimitMax) then
+			TriggerClientEvent('poker:notify', _source, { description = 'NPCs require Hand Limit within server max.', type = 'error', duration = 4000 })
+			return
+		end
 	end
 	local npcsAtTable = 0
 	for _,p in pairs(pendingGame:getPlayers()) do
@@ -457,6 +529,7 @@ RegisterServerEvent("rainbow_poker:Server:FinalizePendingGameAndBegin", function
         ante = pendingGame:getAnte(),
         bettingPool = pendingGame:getAnte() * #pendingGame:getPlayers(),
         propHostNetId = propHostNetId,
+        handLimitMultiplier = pendingGame:getHandLimitMultiplier(),
     })
 
     newActiveGame:init()
@@ -564,6 +637,15 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionRaise", function(amountToR
     amountToRaise = tonumber(amountToRaise)
     local outstanding = math.max(0, game:getRoundsHighestBet() - (player:getAmountBetInRound() or 0))
     local toPay = outstanding + amountToRaise
+    local hlm = (game.getHandLimitMultiplier and game:getHandLimitMultiplier()) or 0
+    if hlm > 0 then
+        local limit = (game:getAnte() or 0) * hlm
+        local remaining = limit - (player:getTotalAmountBetInGame() or 0)
+        if remaining <= 0 or toPay > remaining then
+            TriggerClientEvent('poker:notify', _source, { description = 'Hand limit reached.', type = 'error', duration = 4000 })
+            return
+        end
+    end
     if takeMoney(_source, toPay) then
         local p = game:findPlayerByNetId(_source)
         if p and p.setPlayerCash then p:setPlayerCash((p:getPlayerCash() or 0) - toPay) end
@@ -614,6 +696,15 @@ RegisterServerEvent("rainbow_poker:Server:PlayerActionCall", function()
 
     local player = game:findPlayerByNetId(_source)
     local amount = game:getRoundsHighestBet() - player:getAmountBetInRound()
+    local hlm = (game.getHandLimitMultiplier and game:getHandLimitMultiplier()) or 0
+    if hlm > 0 then
+        local limit = (game:getAnte() or 0) * hlm
+        local remaining = limit - (player:getTotalAmountBetInGame() or 0)
+        if remaining <= 0 or amount > remaining then
+            TriggerClientEvent('poker:notify', _source, { description = 'Hand limit reached.', type = 'error', duration = 4000 })
+            return
+        end
+    end
 
     if takeMoney(_source, amount) then
         local p = game:findPlayerByNetId(_source)
@@ -943,6 +1034,7 @@ function checkForWinCondition(game)
                 ante = ante,
                 bettingPool = ante * #activeGamePlayers,
                 propHostNetId = nextPropHostNetId,
+                handLimitMultiplier = (game.getHandLimitMultiplier and game:getHandLimitMultiplier()) or 0,
             })
 
             newActiveGame:init()

@@ -32,6 +32,7 @@ Game.currentGoingBet = 0
 Game.roundsHighestBet = 0
 Game.sidePots = {}
 Game.propHostNetId = nil
+Game.handLimitMultiplier = 0
 
 Game.turnTimer = nil
 Game.turnTimerWarned = false
@@ -150,6 +151,14 @@ end
 
 function Game:getRoundsHighestBet()
 	return self.roundsHighestBet
+end
+
+function Game:getHandLimitMultiplier()
+	return self.handLimitMultiplier or 0
+end
+
+function Game:setHandLimitMultiplier(m)
+	self.handLimitMultiplier = tonumber(m) or 0
 end
 
 function Game:setRoundsHighestBet(roundsHighestBet)
@@ -771,6 +780,7 @@ function Game:New(obj)
     instance.currentTurn = 1
     instance.currentGoingBet = 0
     instance.roundsHighestBet = 0
+    instance.handLimitMultiplier = tonumber(obj.handLimitMultiplier) or 0
     instance.sidePots = {}
     instance.turnTimer = nil
     instance.turnTimerWarned = false

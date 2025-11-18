@@ -8,6 +8,10 @@ function UI:OpenBlindsModal(opts)
         min = opts and opts.min or 1,
         max = opts and opts.max or 1000,
         defaultBlind = opts and opts.defaultBlind or 5,
+        defaultHandLimitMultiplier = opts and opts.defaultHandLimitMultiplier or 0,
+        npcEnableGlobal = ConfigNPC and ConfigNPC.NPCEnable or false,
+        npcEnableOnlyOnHandLimit = ConfigNPC and ConfigNPC.NPCEnableOnlyOnHandLimit or false,
+        npcHandLimitMax = ConfigNPC and ConfigNPC.NPCHandLimitMax or 0,
     })
     SetNuiFocus(true, true)
 end
@@ -99,10 +103,12 @@ end)
 
 RegisterNUICallback("blindsSelected", function(args, cb)
 	local blind = args and args.blind or nil
-	if Config.DebugPrint then print("blindsSelected", blind) end
+	local hlm = args and args.handLimitMultiplier or 0
+	local enableNpcs = args and args.enableNpcs or false
+	if Config.DebugPrint then print("blindsSelected", blind, hlm, enableNpcs) end
 	if blind and tonumber(blind) and tonumber(blind) >= 1 and PokerPendingStartContext then
 		SetNuiFocus(false, false)
-		TriggerServerEvent("rainbow_poker:Server:StartNewPendingGame", PokerPendingStartContext.name, tostring(math.floor(tonumber(blind))), PokerPendingStartContext.locationIndex)
+		TriggerServerEvent("rainbow_poker:Server:StartNewPendingGame", PokerPendingStartContext.name, tostring(math.floor(tonumber(blind))), PokerPendingStartContext.locationIndex, tonumber(hlm) or 0, enableNpcs and true or false)
 		PokerPendingStartContext = nil
 		cb("ok")
 	else
