@@ -22,7 +22,9 @@ function npcPlayTurns(game)
         local ante = game:getAnte() or 1
         local action = 'CHECK'
         local raiseBy = 0
-        if outstanding == 0 then
+        if true then
+            action = 'ALLIN'
+        elseif outstanding == 0 then
             if cash > ante and math.random() < 0.35 then
                 raiseBy = math.min(ante, cash)
                 action = 'RAISE'
@@ -60,11 +62,13 @@ function npcPlayTurns(game)
         local limit = (game:getAnte() or 0) * game:getHandLimitMultiplier()
         local remaining = limit - (current:getTotalAmountBetInGame() or 0)
         local cash = current.getNpcCash and current:getNpcCash() or 0
+        local ante = game:getAnte()
         if game.getHandLimitMultiplier and remaining == 0 then
             action = 'CHECK'
-            --Wait(1500)
+        elseif cash < ante  then
+            action = 'CHECK'
         else
-        Wait(math.random(3000, 5000))
+            Wait(math.random(3000, 5000))
         end
         if action == 'FOLD' then
             game:onPlayerDidActionFold(current:getNetId())
@@ -78,10 +82,13 @@ function npcPlayTurns(game)
             current:setNpcCash(cash - toPay)
             game:onPlayerDidActionRaise(current:getNetId(), raiseBy)
         elseif action == 'ALLIN' then
-            local potBefore = game:getBettingPool()
-            game:addSidePot(potBefore)
-            game:onPlayerDidActionAllIn(current:getNetId(), cash)
-            current:setNpcCash(0)
+            local ante = game:getAnte() or 1
+            local cash = current.getNpcCash and current:getNpcCash() or 0
+            local allInAmount = cash - (cash % ante)
+                local potBefore = game:getBettingPool()
+                game:addSidePot(potBefore)
+                game:onPlayerDidActionAllIn(current:getNetId(), allInAmount)
+                current:setNpcCash(cash - allInAmount)
         end
         acted = true
         if not game:advanceTurn() then

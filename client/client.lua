@@ -458,8 +458,14 @@ CreateThread(function()
 
             if myTurn then
                 if game.handLimitMultiplier > 0 and thisPlayer.totalAmountBetInGame == (game.ante * game.handLimitMultiplier) then
-                    --Wait(1500)
                     TriggerServerEvent("rainbow_poker:Server:PlayerActionCheck")
+                end
+                if not (game.handLimitMultiplier and game.handLimitMultiplier > 0) then
+                    local outstanding = math.max(0, (game.roundsHighestBet or 0) - (thisPlayer.amountBetInRound or 0))
+                    local cash = (thisPlayer.playerCash or 0)
+                    if outstanding > 0 and outstanding >= cash then
+                        TriggerServerEvent("rainbow_poker:Server:PlayerActionCall")
+                    end
                 end
                 local canEnable = GetGameTimer() >= revealHoldUntil
                 if not canEnable and promptsActive then
