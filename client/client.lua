@@ -239,7 +239,7 @@ CreateThread(function()
                 if not hasPlayerAlreadyJoined then
                     PromptJoin:TogglePrompt(true)
                     if location.pendingGame and location.pendingGame.ante then
-                        PromptSetText(PromptJoin.Prompt, CreateVarString(10, "LITERAL_STRING", "Join Game  |  Ante Bet: ~o~$"..location.pendingGame.ante.." ", "Title"))
+                        PromptSetText(PromptJoin.Prompt, CreateVarString(10, "LITERAL_STRING", string.format("Join Game  |  Ante Bet: ~o~$%.2f ", tonumber(location.pendingGame.ante) or 0), "Title"))
                     end
                 end
 
@@ -485,8 +485,8 @@ CreateThread(function()
 
                 if not thisPlayer.hasFolded then
 
-                    PromptSetText(PromptRaise.Prompt, CreateVarString(10, "LITERAL_STRING", string.format("Raise by $%d | (~o~$%d~s~)", turnRaiseAmount, game.currentGoingBet + turnRaiseAmount), "Title"))
-                    PromptSetText(PromptCall.Prompt, CreateVarString(10, "LITERAL_STRING", string.format("Call | (~o~$%d~s~)", (game.roundsHighestBet - thisPlayer.amountBetInRound)), "Title"))
+                    PromptSetText(PromptRaise.Prompt, CreateVarString(10, "LITERAL_STRING", string.format("Raise by $%.2f | (~o~$%.2f~s~)", tonumber(turnRaiseAmount) or 0, (tonumber(game.currentGoingBet) or 0) + (tonumber(turnRaiseAmount) or 0)), "Title"))
+                    PromptSetText(PromptCall.Prompt, CreateVarString(10, "LITERAL_STRING", string.format("Call | (~o~$%.2f~s~)", (tonumber(game.roundsHighestBet) or 0) - (tonumber(thisPlayer.amountBetInRound) or 0)), "Title"))
 
                     -- compute max raise considering cash, outstanding, and hand limit
                     local outstanding = math.max(0, (game.roundsHighestBet or 0) - (thisPlayer.amountBetInRound or 0))
