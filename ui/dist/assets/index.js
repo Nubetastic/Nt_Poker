@@ -332,7 +332,7 @@ function ge(a, s, f, c, r, o) {
                             default: i(() => [t(n, {
                                 cols: "12"
                             }, {
-                                default: i(() => [e("span", { class: "text-amber-lighten-3", style: { "font-size": "24px", "font-weight": "700" } }, "Table Pot: ", -1), e("span", { class: "text-amber", style: { "font-size": "24px", "font-weight": "700", "margin-left": "6px" } }, "$" + l((+this.game.bettingPool).toFixed(2)), 1)]),
+                                default: i(() => [e("span", { class: "text-amber-lighten-3", style: { "font-size": "24px", "font-weight": "700" } }, "Table Pot: ", -1), e("span", { class: "text-amber", style: { "font-size": "24px", "font-weight": "700", "margin-left": "6px" } }, "$" + l(Math.floor(+this.game.bettingPool)), 1)]),
                                 _: 1
                             })]),
                             _: 1
@@ -376,19 +376,19 @@ function ge(a, s, f, c, r, o) {
                                             cols: "12",
                                             class: "player-data-item pb-0"
                                         }, {
-                                            default: i(() => [e("span", { class: "text-amber", style: { "font-size": "14px" } }, "Cash: $" + l((+(u.isNpc ? u.npcCash : u.playerCash)).toFixed(2)), 1)]),
+                                            default: i(() => [e("span", { class: "text-amber", style: { "font-size": "14px" } }, "Cash: $" + l(Math.floor(+(u.isNpc ? u.npcCash : u.playerCash))), 1)]),
                                             _: 2
                                         }, 1024), t(n, {
                                             cols: "12",
                                             class: "player-data-item pb-0"
                                         }, {
-                                            default: i(() => [e("span", { style: { "font-size": "14px" } }, "Action: " + l(o.getThisRoundsActionFromPlayer(u) + (u.amountBetInRound > 0 ? " $" + (+u.amountBetInRound).toFixed(2) : "")), 1)]),
+                                            default: i(() => [e("span", { style: { "font-size": "14px" } }, "Action: " + l(o.getThisRoundsActionFromPlayer(u) + (u.amountBetInRound > 0 ? " $" + Math.floor(+u.amountBetInRound) : "")), 1)]),
                                             _: 2
                                         }, 1024), t(n, {
                                             cols: "12",
                                             class: "player-data-item pb-0"
                                         }, {
-                                            default: i(() => [e("span", { class: "text-amber", style: { "font-size": "14px" } }, "Total Bet: $" + l((+u.totalAmountBetInGame).toFixed(2)), 1)]),
+                                            default: i(() => [e("span", { class: "text-amber", style: { "font-size": "14px" } }, "Total Bet: $" + l(Math.floor(+u.totalAmountBetInGame)), 1)]),
                                             _: 2
                                         }, 1024)]),
                                         _: 2
@@ -415,7 +415,7 @@ function ge(a, s, f, c, r, o) {
             class: "px-5"
         }, {
             default: i(() => [t(n, null, {
-                default: i(() => [this.winScenario.thisPlayersWinningHand ? p("", !0) : (h(), g("div", ie, [e("h3", { class: "win-title text-red-accent-3" }, "LOSE"), e("div", ne, l(((this.game.players.find(u => u.netId === this.winScenario.winningHand.playerNetId) || {}).name) + " won $" + (+this.game.bettingPool).toFixed(2)), 1), e("div", oe, l(this.describeHand(this.winScenario.winningHand)), 1)])), this.winScenario.isTrueTie == !1 && this.winScenario.thisPlayersWinningHand ? (h(), g("div", re, [e("h3", { class: "win-title text-green-accent-3" }, "WIN"), e("div", ne, l(((this.game.players.find(u => u.netId === this.winScenario.winningHand.playerNetId) || {}).name) + " won $" + (+this.game.bettingPool).toFixed(2)), 1), e("div", oe, l(this.describeHand(this.winScenario.winningHand)), 1)])) : p("", !0), this.winScenario.isTrueTie == !0 && this.winScenario.thisPlayersWinningHand ? (h(), g("div", le, [e("h3", { class: "win-title text-green-lighten-2" }, "WIN"), e("div", ce, l("Tie: " + this.winScenario.tiedHands.length + " winners, each won $" + (+(this.game.bettingPool / this.winScenario.tiedHands.length)).toFixed(2)), 1), e("div", ue, l(this.describeHand(this.winScenario.tiedHands && this.winScenario.tiedHands[0])), 1)])) : p("", !0)]),
+                default: i(() => [this.winScenario.thisPlayersWinningHand ? p("", !0) : (h(), g("div", ie, [e("h3", { class: "win-title text-red-accent-3" }, "LOSE"), e("div", ne, l(((this.game.players.find(u => u.netId === this.winScenario.winningHand.playerNetId) || {}).name) + " won $" + Math.floor(+this.game.bettingPool)), 1), e("div", oe, l(this.describeHand(this.winScenario.winningHand)), 1)])), this.winScenario.isTrueTie == !1 && this.winScenario.thisPlayersWinningHand ? (h(), g("div", re, [e("h3", { class: "win-title text-green-accent-3" }, "WIN"), e("div", ne, l(((this.game.players.find(u => u.netId === this.winScenario.winningHand.playerNetId) || {}).name) + " won $" + Math.floor(+this.game.bettingPool)), 1), e("div", oe, l(this.describeHand(this.winScenario.winningHand)), 1)])) : p("", !0), this.winScenario.isTrueTie == !0 && this.winScenario.thisPlayersWinningHand ? (h(), g("div", le, [e("h3", { class: "win-title text-green-lighten-2" }, "WIN"), e("div", ce, l("Tie: " + this.winScenario.tiedHands.length + " winners, each won $" + Math.floor(+(this.game.bettingPool / this.winScenario.tiedHands.length))), 1), e("div", ue, l(this.describeHand(this.winScenario.tiedHands && this.winScenario.tiedHands[0])), 1)])) : p("", !0)]),
                 _: 1
             })]),
             _: 1
