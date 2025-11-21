@@ -1135,14 +1135,14 @@ end
 function takeMoney(targetNetId, amount)
     amount = tonumber(amount)
     if not hasMoney(targetNetId, amount) then
-        TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You don't have $%.2f!", amount), type = 'error', duration = 20000 })
+        TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You don't have $%d!", math.floor(amount)), type = 'error', duration = 20000 })
         return false
     end
     if not Framework.removeMoney(targetNetId, amount, 'poker-ante') then
-        TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You don't have $%.2f!", amount), type = 'error', duration = 20000 })
+        TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You don't have $%d!", math.floor(amount)), type = 'error', duration = 20000 })
         return false
     end
-    TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You have bet $%.2f.", amount), type = 'inform', duration = 6000 })
+    TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You have bet $%d.", math.floor(amount)), type = 'inform', duration = 6000 })
     return true
 end
 
@@ -1151,7 +1151,7 @@ function giveMoney(targetNetId, amount)
     if not Framework.addMoney(targetNetId, amount, 'poker-win') then
         return false
     end
-    TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You have won $%.2f.", amount), type = 'success', duration = 6000 })
+    TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You have won $%d.", math.floor(amount)), type = 'success', duration = 6000 })
     return true
 end
 
