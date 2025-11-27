@@ -1148,10 +1148,12 @@ end
 
 function giveMoney(targetNetId, amount)
     amount = tonumber(amount)
-    if not Framework.addMoney(targetNetId, amount, 'poker-win') then
+    local houseCut = amount * (Config.HouseCut or 0)
+    local playerAmount = amount - houseCut
+    if not Framework.addMoney(targetNetId, playerAmount, 'poker-win') then
         return false
     end
-    TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You have won $%d.", math.floor(amount)), type = 'success', duration = 6000 })
+    TriggerClientEvent('poker:notify', targetNetId, { description = string.format("You have won $%d.", math.floor(playerAmount)), type = 'success', duration = 6000 })
     return true
 end
 

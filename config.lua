@@ -15,6 +15,7 @@ Config.TableDistance = 2.6
 Config.TurnTimeoutInSeconds = 2 * 60
 Config.TurnTimeoutWarningInSeconds = 20
 Config.BetweenRoundWait = 15000 -- Time to wait between rounds in ms
+Config.HouseCut = 0.05 -- 5% house cut
 
 Config.Keys = {
     ActionCall = "INPUT_FRONTEND_RB", -- E
