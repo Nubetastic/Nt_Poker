@@ -164,38 +164,48 @@ function Props:Update(game)
     local zOff = chipsOff.z or 0.93
     local degOff = chipsOff.deg or 0.0
     local present = {}
+    local localPlayerId = GetPlayerServerId(PlayerId())
     for _,p in pairs(game.players or {}) do
-        local order = p.seatIndex or p.order
-        local chair = loc.Chairs and loc.Chairs[order]
-        if chair and chair.Coords then
-            local chairPos = vector3(chair.Coords.x, chair.Coords.y, chair.Coords.z)
-            local dirX = chairPos.x - tablePos.x
-            local dirY = chairPos.y - tablePos.y
-            local len = math.sqrt(dirX*dirX + dirY*dirY)
-            if len < 0.001 then len = 1.0 end
-            dirX = dirX / len
-            dirY = dirY / len
-            local rad = math.rad(degOff)
-            local cosA = math.cos(rad)
-            local sinA = math.sin(rad)
-            local rotX = dirX * cosA - dirY * sinA
-            local rotY = dirX * sinA + dirY * cosA
-            local chipsX = tablePos.x + rotX * r
-            local chipsY = tablePos.y + rotY * r
-            local pos = vector3(chipsX, chipsY, tablePos.z + (zOff - tableLower))
-            if not playerChips[order] or not DoesEntityExist(playerChips[order]) then
-                local chipsModel = chipsModelCfg
-                if type(chipsModelCfg) == 'table' and #chipsModelCfg > 0 then
-                    chipsModel = chipsModelCfg[math.random(1, #chipsModelCfg)]
+        local shouldSpawn = false
+        if p.isNpc then
+            shouldSpawn = isHostClient
+        else
+            shouldSpawn = (p.netId == localPlayerId)
+        end
+        
+        if shouldSpawn then
+            local order = p.seatIndex or p.order
+            local chair = loc.Chairs and loc.Chairs[order]
+            if chair and chair.Coords then
+                local chairPos = vector3(chair.Coords.x, chair.Coords.y, chair.Coords.z)
+                local dirX = chairPos.x - tablePos.x
+                local dirY = chairPos.y - tablePos.y
+                local len = math.sqrt(dirX*dirX + dirY*dirY)
+                if len < 0.001 then len = 1.0 end
+                dirX = dirX / len
+                dirY = dirY / len
+                local rad = math.rad(degOff)
+                local cosA = math.cos(rad)
+                local sinA = math.sin(rad)
+                local rotX = dirX * cosA - dirY * sinA
+                local rotY = dirX * sinA + dirY * cosA
+                local chipsX = tablePos.x + rotX * r
+                local chipsY = tablePos.y + rotY * r
+                local pos = vector3(chipsX, chipsY, tablePos.z + (zOff - tableLower))
+                if not playerChips[order] or not DoesEntityExist(playerChips[order]) then
+                    local chipsModel = chipsModelCfg
+                    if type(chipsModelCfg) == 'table' and #chipsModelCfg > 0 then
+                        chipsModel = chipsModelCfg[math.random(1, #chipsModelCfg)]
+                    end
+                    local heading = math.random() * 360.0
+                    playerChips[order] = createLocalObject(chipsModel, pos, heading)
+                else
+                    FreezeEntityPosition(playerChips[order], false)
+                    SetEntityCoords(playerChips[order], pos.x, pos.y, pos.z, false, false, false, true)
+                    FreezeEntityPosition(playerChips[order], true)
                 end
-                local heading = math.random() * 360.0
-                playerChips[order] = createLocalObject(chipsModel, pos, heading)
-            else
-                FreezeEntityPosition(playerChips[order], false)
-                SetEntityCoords(playerChips[order], pos.x, pos.y, pos.z, false, false, false, true)
-                FreezeEntityPosition(playerChips[order], true)
+                present[order] = true
             end
-            present[order] = true
         end
     end
     for order,obj in pairs(playerChips) do

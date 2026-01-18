@@ -9,7 +9,7 @@ client_scripts {
 	"client/nui.lua",
 	"client/props.lua",
 	"client/npc.lua",
-	"client/proptest.lua",
+	--"client/proptest.lua",
 }
 
 server_scripts {
@@ -17,7 +17,7 @@ server_scripts {
 	"server/npc.lua",
 	"server/server.lua",
 	"server/sv_command.lua",
-	"server/proptest.lua",
+	--"server/proptest.lua",
 	"server/version_check.lua",
 	"@oxmysql/lib/MySQL.lua",
 }
@@ -26,7 +26,7 @@ shared_scripts {
 	"config.lua",
 	"configNPC.lua",
 	"configProps.lua",
-	"configproptest.lua",
+	--"configproptest.lua",
 	"shared/*.lua",
 	"shared/**/*.lua",
 }

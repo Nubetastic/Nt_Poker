@@ -1,7 +1,7 @@
 ConfigNPC = {}
 
 ConfigNPC.NPCEnable = true -- Enable npc players at tables.
-ConfigNPC.NPCEnableOnlyOnHandLimit = true -- If true npc players will only be added to hand limit tables.
+ConfigNPC.NPCEnableOnlyOnHandLimit = false -- If true npc players will only be added to hand limit tables.
 ConfigNPC.NPCHandLimitMax = 100 -- Max hand limit for npc players to be added to table.
 
 ConfigNPC.Settings = {
@@ -9,6 +9,23 @@ ConfigNPC.Settings = {
     NPCLeaveSeatFree = true, -- If there is an npc playing and less then 2 free seats then one npc at the table will leave between hands.
     MaxFreeSeats = 1, -- If there are less then this number of free seats at a table an npc will leave between hands.
     DecisionTime = math.random(30,120), -- time in seconds npc will take to make a decision.
+
+
+    -- New Settings
+    LowBetting = 3, -- 3 times the ante
+    HighBetting = 8, -- 8 times the ante
+
+    -- Strong Hand, add half chance of winning
+    RaiseChance = .3,
+    CallChance = .6,
+
+    -- Weak Hand, add half chance of loosing
+    FoldChance = .3,
+
+    -- Table Activity
+    BluffChance = .2,
+    DisableBluffAmount = 5, -- if player bet will exceed 5 times ante no bluffing.
+
 }
 
 ConfigNPC.NpcCash = {
