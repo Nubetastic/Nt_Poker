@@ -4,6 +4,11 @@ ConfigNPC.NPCEnable = true -- Enable npc players at tables.
 ConfigNPC.NPCEnableOnlyOnHandLimit = false -- If true npc players will only be added to hand limit tables.
 ConfigNPC.NPCHandLimitMax = 100 -- Max hand limit for npc players to be added to table.
 
+Config.NPCGroup = {
+    Male = "REL_CIVMALE_Poker",
+    Female = "REL_CIVFEMALE_Poker",
+}
+
 ConfigNPC.Settings = {
     MaxPerTable = 3, -- max number of npc players at any table.
     NPCLeaveSeatFree = true, -- If there is an npc playing and less then 2 free seats then one npc at the table will leave between hands.

@@ -2,6 +2,7 @@ NPCVisuals = {}
 
 local npcPeds = {}
 local npcHandObjs = {}
+local npcFoldStates = {}
 local isHostClient = false
 local currentLocationId = nil
 
@@ -26,6 +27,113 @@ end
 local function deleteObjSafe(obj)
     if obj and DoesEntityExist(obj) then
         DeleteObject(obj)
+    end
+end
+
+local function loadAnimDict(dict)
+    RequestAnimDict(dict)
+    local timeout = GetGameTimer() + 5000
+    while not HasAnimDictLoaded(dict) and GetGameTimer() < timeout do
+        Wait(0)
+    end
+
+    return HasAnimDictLoaded(dict)
+end
+
+local function playNpcAnimation(ped, animation)
+    if not ped or not DoesEntityExist(ped) or not animation then return 0 end
+    if not loadAnimDict(animation.Dict) then return 0 end
+
+    local length = 4000
+    if animation.isIdle then
+        length = -1
+    elseif animation.Length then
+        length = animation.Length
+    end
+
+    local blendIn = animation.isIdle and 1.0 or 8.0
+    local blendOut = 1.0
+    TaskPlayAnim(ped, animation.Dict, animation.Name, blendIn, blendOut, length, 25, 1.0, true, 0, false, 0, false)
+    return length
+end
+
+local function playNpcNoCardsIdle(ped)
+    local animations = Config and Config.Animations and Config.Animations.NoCards
+    local animation = animations and animations[1] or { Dict = "mini_games@poker_mg@base", Name = "no_cards_idle_a", isIdle = true }
+    playNpcAnimation(ped, animation)
+end
+
+local function playNpcHoldCardsIdle(ped)
+    local animations = Config and Config.Animations and Config.Animations.HoldCards
+    local animation = animations and animations[1] or { Dict = "mini_games@poker_mg@base", Name = "hold_cards_idle_a", isIdle = true }
+    playNpcAnimation(ped, animation)
+end
+
+local function playNpcFold(ped, seat)
+    local animations = Config and Config.Animations and Config.Animations.Fold
+    local animation = animations and animations[1] or { Dict = "mini_games@poker_mg@base", Name = "fold", Length = 1200 }
+    local length = playNpcAnimation(ped, animation)
+    if length and length > 0 then
+        CreateThread(function()
+            Wait(length)
+            if npcFoldStates[seat] and ped and DoesEntityExist(ped) then
+                playNpcNoCardsIdle(ped)
+            end
+        end)
+    end
+end
+
+local function isFemaleNpcModel(model)
+    model = tostring(model or ""):lower()
+    if model:find("_f_", 1, true) or model:find("female", 1, true) then
+        return true
+    end
+
+    return false
+end
+
+local function getPedRelationshipGroup(ped)
+    if GetPedRelationshipGroupHash then
+        return GetPedRelationshipGroupHash(ped)
+    end
+
+    return Citizen.InvokeNative(0x7DBDD04862D95F04, ped)
+end
+
+local function setNpcRelationshipGroup(ped, model)
+    if not ped or not DoesEntityExist(ped) then return end
+
+    local groups = Config and Config.NPCGroup or {}
+    local groupName = nil
+
+    if IsPedMale then
+        groupName = IsPedMale(ped) and groups.Male or groups.Female
+    else
+        groupName = isFemaleNpcModel(model) and groups.Female or groups.Male
+    end
+
+    if not groupName then return end
+
+    local groupHash = type(groupName) == "number" and groupName or GetHashKey(groupName)
+
+    if SetPedRelationshipGroupHash then
+        SetPedRelationshipGroupHash(ped, groupHash)
+    else
+        Citizen.InvokeNative(0xC80A74AC829DDD92, ped, groupHash)
+    end
+
+    local playerGroup = getPedRelationshipGroup(PlayerPedId()) or GetHashKey("PLAYER")
+    local relation = 1 -- Respect
+    if SetRelationshipBetweenGroups then
+        SetRelationshipBetweenGroups(relation, groupHash, playerGroup)
+        SetRelationshipBetweenGroups(relation, playerGroup, groupHash)
+    else
+        pcall(Citizen.InvokeNative, 0xBF25EB89375A37AD, relation, groupHash, playerGroup)
+        pcall(Citizen.InvokeNative, 0xBF25EB89375A37AD, relation, playerGroup, groupHash)
+    end
+
+    if SetBlockingOfNonTemporaryEvents then
+        SetBlockingOfNonTemporaryEvents(ped, true)
     end
 end
 
@@ -62,12 +170,13 @@ local function ensureNpcPedFor(game, loc, player)
     SetEntityHeading(ped, chair.Coords.w or 0.0)
     SetEntityCollision(ped, false, false)
     FreezeEntityPosition(ped, true)
-    SetEntityAsMissionEntity(ped, true, true)
+   --SetEntityAsMissionEntity(ped, true, true)
     local netId = NetworkGetNetworkIdFromEntity(ped)
     -- SetNetworkIdCanMigrate(netId, true) -- AI keeps adding this in, its not a real native.
     SetNetworkIdExistsOnAllMachines(netId, true)
     Citizen.InvokeNative(0x283978A15512B2FE, ped, true)
     Citizen.InvokeNative(0xCC8CA3E88256E58F, ped, 0, 1, 1, 1, false)
+    setNpcRelationshipGroup(ped, model)
     ClearPedTasksImmediately(ped)
     TaskStartScenarioAtPosition(ped, GetHashKey("GENERIC_SEAT_CHAIR_TABLE_SCENARIO"), chair.Coords.x, chair.Coords.y, chair.Coords.z, chair.Coords.w or 0.0, -1, false, true)
     RequestAnimDict("mini_games@poker_mg@base")
@@ -75,12 +184,17 @@ local function ensureNpcPedFor(game, loc, player)
     while not HasAnimDictLoaded("mini_games@poker_mg@base") and GetGameTimer() < t do Wait(0) end
     TaskPlayAnim(ped, "mini_games@poker_mg@base", "hold_cards_idle_a", 1.0, 1.0, -1, 25, 1.0, true, 0, false, 0, false)
     npcPeds[seat] = ped
+    npcFoldStates[seat] = player.hasFolded == true
+    if npcFoldStates[seat] then
+        playNpcNoCardsIdle(ped)
+    end
 end
 
 local function cleanupAll()
     for k,p in pairs(npcPeds) do
         deletePedSafe(p)
         npcPeds[k] = nil
+        npcFoldStates[k] = nil
     end
     for k,o in pairs(npcHandObjs) do
         deleteObjSafe(o)
@@ -128,6 +242,16 @@ function NPCVisuals:Update(game)
                 present[seat] = true
                 local ped = npcPeds[seat]
                 if ped and DoesEntityExist(ped) then
+                    if p.hasFolded and not npcFoldStates[seat] then
+                        npcFoldStates[seat] = true
+                        playNpcFold(ped, seat)
+                    elseif not p.hasFolded and npcFoldStates[seat] then
+                        npcFoldStates[seat] = false
+                        playNpcHoldCardsIdle(ped)
+                    elseif not p.hasFolded then
+                        npcFoldStates[seat] = false
+                    end
+
                     local shouldHaveCards = (game.step ~= ROUNDS.SHOWDOWN) and (not p.hasFolded)
                     if shouldHaveCards then
                         if not npcHandObjs[seat] or not DoesEntityExist(npcHandObjs[seat]) then
@@ -147,6 +271,7 @@ function NPCVisuals:Update(game)
         if not present[seat] then
             deletePedSafe(ped)
             npcPeds[seat] = nil
+            npcFoldStates[seat] = nil
             if npcHandObjs[seat] then
                 deleteObjSafe(npcHandObjs[seat])
                 npcHandObjs[seat] = nil
