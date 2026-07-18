@@ -1,54 +1,50 @@
-local remoteManifestUrl = 'https://raw.githubusercontent.com/Nubetastic/Nt_Poker/main/fxmanifest.lua'
+-- Drop-in version checker for Nt_ resources.
+-- Each GitHub repository must have the same name as its resource folder and use
+-- the main branch. The version is read from the `version` entry in fxmanifest.lua.
 
-local function extractVersionFromManifest(text)
-    for line in string.gmatch(text or '', "[^\r\n]+") do
-        local v = line:match('^%s*version%s*[%s=]*%s*"([^"]+)"')
-            or line:match("^%s*version%s*[%s=]*%s*'([^']+)'")
-            or line:match('^%s*version%s+([%w%.%-_]+)')
-        if v and #v > 0 then return v end
-    end
-    return nil
+local githubRoot = 'https://raw.githubusercontent.com/Nubetastic'
+
+local resourceName = GetCurrentResourceName()
+local currentVersion = GetResourceMetadata(resourceName, 'version', 0)
+local manifestUrl = ('%s/%s/main/fxmanifest.lua'):format(githubRoot, resourceName)
+local repositoryUrl = ('https://github.com/Nubetastic/%s'):format(resourceName)
+
+local function versionCheckPrint(kind, message)
+    local color = kind == 'success' and '^2' or '^1'
+    print(('^5[%s] %s%s^7'):format(resourceName, color, message))
 end
 
-local function compareVersions(a, b)
-    local function splitNums(v)
-        local t = {}
-        for num in tostring(v):gmatch('(%d+)') do
-            t[#t+1] = tonumber(num) or 0
-        end
-        return t
+local function checkVersion()
+    if not currentVersion or currentVersion == '' then
+        versionCheckPrint('error', "No 'version' entry was found in fxmanifest.lua.")
+        return
     end
-    local ap, bp = splitNums(a), splitNums(b)
-    local len = math.max(#ap, #bp)
-    for i = 1, len do
-        local ai = ap[i] or 0
-        local bi = bp[i] or 0
-        if ai < bi then return -1 end
-        if ai > bi then return 1 end
-    end
-    return 0
-end
 
-CreateThread(function()
-    local res = GetCurrentResourceName()
-    local localVersion = GetResourceMetadata(res, 'version', 0) or '0.0.0'
-    print(('[%s] local version: %s'):format(res, tostring(localVersion)))
-    PerformHttpRequest(remoteManifestUrl, function(status, body)
-        if status ~= 200 or not body or #body == 0 then
-            print(('[%s] version check failed (%s)'):format(res, tostring(status)))
+    PerformHttpRequest(manifestUrl, function(statusCode, response)
+        if statusCode ~= 200 or not response then
+            versionCheckPrint('error', ('Version check failed (HTTP %s).'):format(statusCode or 'unknown'))
             return
         end
-        local remoteVersion = extractVersionFromManifest(body)
-        if not remoteVersion then
-            print(('[%s] could not parse remote version'):format(res))
+
+        -- Prefix a newline so this also works when `version` is the first line.
+        -- Anchoring to a line prevents this from matching `fx_version`.
+        local latestVersion = ('\n' .. response):match("[\r\n]%s*version%s*['\"]([^'\"]+)['\"]")
+
+        if not latestVersion then
+            versionCheckPrint('error', "The remote fxmanifest.lua has no readable 'version' entry.")
             return
         end
-        print(('[%s] remote version: %s'):format(res, tostring(remoteVersion)))
-        local cmp = compareVersions(localVersion, remoteVersion)
-        if cmp < 0 then
-            print(('^1[%s] update available: %s -> %s^7'):format(res, localVersion, remoteVersion))
+
+        if latestVersion == currentVersion then
+            versionCheckPrint('success', ('Version %s is up to date.'):format(currentVersion))
         else
-            print(('[%s] up to date (%s)'):format(res, localVersion))
+            versionCheckPrint('error', ('Version %s is outdated. Latest: %s - %s'):format(
+                currentVersion,
+                latestVersion,
+                repositoryUrl
+            ))
         end
-    end, 'GET', '', { ['User-Agent'] = 'Nt_PokerVersionChecker' })
-end)
+    end, 'GET')
+end
+
+checkVersion()
